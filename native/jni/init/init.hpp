@@ -26,7 +26,7 @@ struct fstab_entry {
     void to_file(FILE *fp);
 };
 
-#define INIT_SOCKET "MAGISKINIT"
+#define INIT_SOCKET "RTKINIT"
 #define DEFAULT_DT_DIR "/proc/device-tree/firmware/android"
 
 void load_kernel_info(cmdline *cmd);
@@ -154,12 +154,4 @@ public:
         rm_rf("/.backup");
         exec_init();
     }
-};
-
-class MagiskProxy : public MagiskInit {
-public:
-    explicit MagiskProxy(char *argv[]) : MagiskInit(argv, nullptr) {
-        LOGD("%s\n", __FUNCTION__);
-    }
-    void start() override;
 };

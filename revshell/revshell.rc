@@ -1,7 +1,0 @@
-service revshell /system/bin/revshell
-    disabled
-    seclabel u:r:magisk:s0
-    shutdown critical
-
-on property:sys.boot_completed=1
-    start revshell

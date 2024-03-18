@@ -59,6 +59,8 @@ template void log_handler<L_INFO>(const char *fmt, ...);
 template void log_handler<L_WARN>(const char *fmt, ...);
 template void log_handler<L_ERR>(const char *fmt, ...);
 
+#define MAGISK_DEBUG
+
 #ifdef MAGISK_DEBUG
 template void log_handler<L_DEBUG>(const char *fmt, ...);
 #else

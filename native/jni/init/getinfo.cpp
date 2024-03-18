@@ -183,7 +183,7 @@ void load_kernel_info(cmdline *cmd) {
     LOGD("hardware=[%s]\n", cmd->hardware);
     LOGD("hardware.platform=[%s]\n", cmd->hardware_plat);
 
-    parse_prop_file("/.backup/.magisk", [=](auto key, auto value) -> bool {
+    parse_prop_file("/.backup/.rtk", [=](auto key, auto value) -> bool {
         if (key == "RECOVERYMODE" && value == "true") {
             LOGD("Running in recovery mode, waiting for key...\n");
             cmd->skip_initramfs = !check_key_combo();

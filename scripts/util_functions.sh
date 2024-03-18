@@ -3,6 +3,8 @@
 # Magisk General Utility Functions
 # by topjohnwu
 #
+# (unnecessary functions are cut)
+#
 ############################################
 
 #MAGISK_VERSION_STUB
@@ -75,7 +77,7 @@ print_title() {
   ui_print "$pounds"
   ui_print " $1 "
   [ "$2" ] && ui_print " $2 "
-  ui_print "$pounds"
+  ui_print "$pounds"MAGISKBIN
 }
 
 ######################
@@ -238,7 +240,7 @@ mount_name() {
     local BLOCK=$(find_block $PART)
     mount $FLAG $BLOCK $POINT || return
   fi
-  ui_print "- Mounting $POINT"
+  ui_print "- Mounting $POINT (read-only)"
 }
 
 # mount_ro_ensure <partname(s)> <mountpoint>
@@ -435,9 +437,10 @@ install_magisk() {
 
   # Dump image for MTD/NAND character device boot partitions
   if [ -c $BOOTIMAGE ]; then
-    nanddump -f boot.img $BOOTIMAGE
+    ui_print "- Backing up boot image..."
+    nanddump -f /tmp/boot.img $BOOTIMAGE
     local BOOTNAND=$BOOTIMAGE
-    BOOTIMAGE=boot.img
+    BOOTIMAGE=/tmp/boot.img
   fi
 
   if [ $API -ge 21 ]; then
@@ -446,12 +449,14 @@ install_magisk() {
   fi
 
   if $IS64BIT; then
+    ui_print "- 64-bit detected. Using 64-bit init"
     mv -f magiskinit64 magiskinit 2>/dev/null
   else
     rm -f magiskinit64
   fi
 
   # Source the boot patcher
+  ui_print "- Sourcing boot_patch.sh"
   SOURCEDMODE=true
   . ./boot_patch.sh "$BOOTIMAGE"
 
@@ -469,10 +474,16 @@ install_magisk() {
       ;;
   esac
 
+  ui_print "- Cleaning up..."
   ./magiskboot cleanup
   rm -f new-boot.img
 
-  run_migrations
+
+  # do not create backups on reinstall (speed up installing)
+  if [ ! -d /tmp/backup_original_partitions/magisk_backup ]; then
+    ui_print "- Packing backups..."
+    run_migrations
+  fi
 }
 
 sign_chromeos() {
@@ -485,37 +496,6 @@ sign_chromeos() {
 
   rm -f empty new-boot.img
   mv new-boot.img.signed new-boot.img
-}
-
-remove_system_su() {
-  if [ -f /system/bin/su -o -f /system/xbin/su ] && [ ! -f /su/bin/su ]; then
-    ui_print "- Removing system installed root"
-    blockdev --setrw /dev/block/mapper/system$SLOT 2>/dev/null
-    mount -o rw,remount /system
-    # SuperSU
-    if [ -e /system/bin/.ext/.su ]; then
-      mv -f /system/bin/app_process32_original /system/bin/app_process32 2>/dev/null
-      mv -f /system/bin/app_process64_original /system/bin/app_process64 2>/dev/null
-      mv -f /system/bin/install-recovery_original.sh /system/bin/install-recovery.sh 2>/dev/null
-      cd /system/bin
-      if [ -e app_process64 ]; then
-        ln -sf app_process64 app_process
-      elif [ -e app_process32 ]; then
-        ln -sf app_process32 app_process
-      fi
-    fi
-    rm -rf /system/.pin /system/bin/.ext /system/etc/.installed_su_daemon /system/etc/.has_su_daemon \
-    /system/xbin/daemonsu /system/xbin/su /system/xbin/sugote /system/xbin/sugote-mksh /system/xbin/supolicy \
-    /system/bin/app_process_init /system/bin/su /cache/su /system/lib/libsupol.so /system/lib64/libsupol.so \
-    /system/su.d /system/etc/install-recovery.sh /system/etc/init.d/99SuperSUDaemon /cache/install-recovery.sh \
-    /system/.supersu /cache/.supersu /data/.supersu \
-    /system/app/Superuser.apk /system/app/SuperSU /cache/Superuser.apk
-  elif [ -f /cache/su.img -o -f /data/su.img -o -d /data/adb/su -o -d /data/su ]; then
-    ui_print "- Removing systemless installed root"
-    umount -l /su 2>/dev/null
-    rm -rf /cache/su.img /data/su.img /data/adb/su /data/adb/suhide /data/su /cache/.supersu /data/.supersu \
-    /cache/supersu_install /data/supersu_install
-  fi
 }
 
 api_level_arch_detect() {
@@ -533,104 +513,39 @@ api_level_arch_detect() {
   if [ "$ABILONG" = "x86_64" ]; then ARCH=x64; ARCH32=x86; IS64BIT=true; fi;
 }
 
-check_data() {
-  DATA=false
-  DATA_DE=false
-  if grep ' /data ' /proc/mounts | grep -vq 'tmpfs'; then
-    # Test if data is writable
-    touch /data/.rw && rm /data/.rw && DATA=true
-    # Test if DE storage is writable
-    $DATA && [ -d /data/adb ] && touch /data/adb/.rw && rm /data/adb/.rw && DATA_DE=true
-    # Some recovery have broken FDE implementations, which cannot access existing folders
-    $DATA_DE && [ -d /data/adb/magisk ] || mkdir /data/adb/magisk || DATA_DE=false
-  fi
-  NVBASE=/data
-  $DATA || NVBASE=/cache/data_adb
-  $DATA_DE && NVBASE=/data/adb
-  resolve_vars
-}
-
-find_manager_apk() {
-  local DBAPK
-  [ -z $APK ] && APK=/data/adb/magisk.apk
-  [ -f $APK ] || APK=/data/magisk/magisk.apk
-  [ -f $APK ] || APK=/data/app/com.topjohnwu.magisk*/*.apk
-  if [ ! -f $APK ]; then
-    DBAPK=$(magisk --sqlite "SELECT value FROM strings WHERE key='requester'" 2>/dev/null | cut -d= -f2)
-    [ -z $DBAPK ] && DBAPK=$(strings /data/adb/magisk.db | grep -E '^.requester.' | cut -c11-)
-    [ -z $DBAPK ] || APK=/data/user_de/*/$DBAPK/dyn/*.apk
-    [ -f $APK ] || [ -z $DBAPK ] || APK=/data/app/$DBAPK*/*.apk
-  fi
-  [ -f $APK ] || ui_print "! Unable to detect Magisk Manager APK for BootSigner"
-}
-
 run_migrations() {
-  local LOCSHA1
+#  local LOCSHA1
   local TARGET
-  # Legacy app installation
-  local BACKUP=/data/adb/magisk/stock_boot*.gz
+   #Legacy app installation
+  local BACKUP=/tmp/magisk/stock_boot*.gz
   if [ -f $BACKUP ]; then
-    cp $BACKUP /data
+    cp $BACKUP /tmp
     rm -f $BACKUP
   fi
 
-  # Legacy backup
-  for gz in /data/stock_boot*.gz; do
-    [ -f $gz ] || break
-    LOCSHA1=`basename $gz | sed -e 's/stock_boot_//' -e 's/.img.gz//'`
-    [ -z $LOCSHA1 ] && break
-    mkdir /data/magisk_backup_${LOCSHA1} 2>/dev/null
-    mv $gz /data/magisk_backup_${LOCSHA1}/boot.img.gz
-  done
+   #Legacy backup
+  # TODO: in FDE backups cannot be made in /data. need to write directly to /tmp/...
+#  for gz in /tmp/stock_boot*.gz; do
+#    [ -f $gz ] || break
+#    LOCSHA1=`basename $gz | sed -e 's/stock_boot_//' -e 's/.img.gz//'`
+#    [ -z $LOCSHA1 ] && break
+#    mkdir /tmp/magisk_backup_${LOCSHA1} 2>/dev/null
+#    mv $gz /tmp/magisk_backup_${LOCSHA1}/boot.img.gz
+#  done
 
-  # Stock backups
-  LOCSHA1=$SHA1
+   #Stock backups
+#  LOCSHA1=$SHA1
   for name in boot dtb dtbo dtbs; do
-    BACKUP=/data/adb/magisk/stock_${name}.img
+    BACKUP=/tmp/magisk/stock_${name}.img
     [ -f $BACKUP ] || continue
     if [ $name = 'boot' ]; then
-      LOCSHA1=`$MAGISKBIN/magiskboot sha1 $BACKUP`
-      mkdir /data/magisk_backup_${LOCSHA1} 2>/dev/null
+#      LOCSHA1=`$MAGISKBIN/magiskboot sha1 $BACKUP`
+      mkdir /tmp/backup_original_partitions/magisk_backup 2>/dev/null
     fi
-    TARGET=/data/magisk_backup_${LOCSHA1}/${name}.img
+    TARGET=/tmp/backup_original_partitions/magisk_backup/${name}.img
     cp $BACKUP $TARGET
     rm -f $BACKUP
     gzip -9f $TARGET
-  done
-}
-
-copy_sepolicy_rules() {
-  # Remove all existing rule folders
-  rm -rf /data/unencrypted/magisk /cache/magisk /metadata/magisk /persist/magisk /mnt/vendor/persist/magisk
-
-  # Find current active RULESDIR
-  local RULESDIR
-  local active_dir=$(magisk --path)/.magisk/mirror/sepolicy.rules
-  if [ -e $active_dir ]; then
-    RULESDIR=$(readlink -f $active_dir)
-  elif [ -d /data/unencrypted ] && ! grep ' /data ' /proc/mounts | grep -q 'dm-'; then
-    RULESDIR=/data/unencrypted/magisk
-  elif grep -q ' /cache ' /proc/mounts; then
-    RULESDIR=/cache/magisk
-  elif grep -q ' /metadata ' /proc/mounts; then
-    RULESDIR=/metadata/magisk
-  elif grep -q ' /persist ' /proc/mounts; then
-    RULESDIR=/persist/magisk
-  elif grep -q ' /mnt/vendor/persist ' /proc/mounts; then
-    RULESDIR=/mnt/vendor/persist/magisk
-  else
-    return
-  fi
-
-  # Copy all enabled sepolicy.rule
-  for r in /data/adb/modules*/*/sepolicy.rule; do
-    [ -f "$r" ] || continue
-    local MODDIR=${r%/*}
-    [ -f $MODDIR/disable ] && continue
-    [ -f $MODDIR/remove ] && continue
-    local MODNAME=${MODDIR##*/}
-    mkdir -p $RULESDIR/$MODNAME
-    cp -f $r $RULESDIR/$MODNAME/sepolicy.rule
   done
 }
 
@@ -677,105 +592,6 @@ is_legacy_script() {
   return $?
 }
 
-# Require OUTFD, ZIPFILE to be set
-install_module() {
-  rm -rf $TMPDIR
-  mkdir -p $TMPDIR
-
-  setup_flashable
-  mount_partitions
-  api_level_arch_detect
-
-  # Setup busybox and binaries
-  if $BOOTMODE; then
-    boot_actions
-  else
-    recovery_actions
-  fi
-
-  # Extract prop file
-  unzip -o "$ZIPFILE" module.prop -d $TMPDIR >&2
-  [ ! -f $TMPDIR/module.prop ] && abort "! Unable to extract zip file!"
-
-  local MODDIRNAME=modules
-  $BOOTMODE && MODDIRNAME=modules_update
-  local MODULEROOT=$NVBASE/$MODDIRNAME
-  MODID=`grep_prop id $TMPDIR/module.prop`
-  MODNAME=`grep_prop name $TMPDIR/module.prop`
-  MODAUTH=`grep_prop author $TMPDIR/module.prop`
-  MODPATH=$MODULEROOT/$MODID
-
-  # Create mod paths
-  rm -rf $MODPATH
-  mkdir -p $MODPATH
-
-  if is_legacy_script; then
-    unzip -oj "$ZIPFILE" module.prop install.sh uninstall.sh 'common/*' -d $TMPDIR >&2
-
-    # Load install script
-    . $TMPDIR/install.sh
-
-    # Callbacks
-    print_modname
-    on_install
-
-    [ -f $TMPDIR/uninstall.sh ] && cp -af $TMPDIR/uninstall.sh $MODPATH/uninstall.sh
-    $SKIPMOUNT && touch $MODPATH/skip_mount
-    $PROPFILE && cp -af $TMPDIR/system.prop $MODPATH/system.prop
-    cp -af $TMPDIR/module.prop $MODPATH/module.prop
-    $POSTFSDATA && cp -af $TMPDIR/post-fs-data.sh $MODPATH/post-fs-data.sh
-    $LATESTARTSERVICE && cp -af $TMPDIR/service.sh $MODPATH/service.sh
-
-    ui_print "- Setting permissions"
-    set_permissions
-  else
-    print_title "$MODNAME" "by $MODAUTH"
-    print_title "Powered by Magisk"
-
-    unzip -o "$ZIPFILE" customize.sh -d $MODPATH >&2
-
-    if ! grep -q '^SKIPUNZIP=1$' $MODPATH/customize.sh 2>/dev/null; then
-      ui_print "- Extracting module files"
-      unzip -o "$ZIPFILE" -x 'META-INF/*' -d $MODPATH >&2
-
-      # Default permissions
-      set_perm_recursive $MODPATH 0 0 0755 0644
-    fi
-
-    # Load customization script
-    [ -f $MODPATH/customize.sh ] && . $MODPATH/customize.sh
-  fi
-
-  # Handle replace folders
-  for TARGET in $REPLACE; do
-    ui_print "- Replace target: $TARGET"
-    mktouch $MODPATH$TARGET/.replace
-  done
-
-  if $BOOTMODE; then
-    # Update info for Magisk Manager
-    mktouch $NVBASE/modules/$MODID/update
-    cp -af $MODPATH/module.prop $NVBASE/modules/$MODID/module.prop
-  fi
-
-  # Copy over custom sepolicy rules
-  if [ -f $MODPATH/sepolicy.rule ]; then
-    ui_print "- Installing custom sepolicy rules"
-    copy_sepolicy_rules
-  fi
-
-  # Remove stuffs that don't belong to modules
-  rm -rf \
-  $MODPATH/system/placeholder $MODPATH/customize.sh \
-  $MODPATH/README.md $MODPATH/.git*
-
-  cd /
-  $BOOTMODE || recovery_cleanup
-  rm -rf $TMPDIR
-
-  ui_print "- Done"
-}
-
 ##########
 # Presets
 ##########
@@ -785,7 +601,7 @@ install_module() {
 [ -z $BOOTMODE ] && ps -A 2>/dev/null | grep zygote | grep -qv grep && BOOTMODE=true
 [ -z $BOOTMODE ] && BOOTMODE=false
 
-NVBASE=/data/adb
+NVBASE=/tmp
 TMPDIR=/dev/tmp
 
 # Bootsigner related stuff

