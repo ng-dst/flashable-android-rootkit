@@ -1,6 +1,6 @@
 # Flashable Usermode Rootkit for Android
 
-#### A reworked version of [unlocked-bootloader-backdoor-demo](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo) by LuigiVampa92
+#### A full rework of [unlocked-bootloader-backdoor-demo](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo) by LuigiVampa92
 
 #### This is currently an experimental work. Stability is not guaranteed.
 
@@ -18,6 +18,16 @@ FURA uses SELinux to its own advantage: not only to bypass stock policy restrict
 
 This tool, like its predecessor, is based on [Magisk](https://github.com/topjohnwu/Magisk) source code, but does not necessary require root or Magisk preinstalled on the device. 
 It mostly uses a part of MagiskInit to patch SELinux policy.
+
+## Features & Improvements
+
+- Installs entirely into _/boot_, does not modify _/system_ in any way
+- Operates in ramdisk without touching storage
+- Employs a custom daemon to monitor payload execution
+- Leaves no init logs
+- Modifies SELinux policy to hide itself
+- Installation and backup no longer depend on _/data_
+- Cut artifacts and unused code left from Magisk
 
 ## Prerequisites
 
@@ -110,6 +120,8 @@ After installation, backups will be saved automatically.
 `reinstall.sh` to reinstall quickly (if you have the backup).\
 `uninstall.sh` to restore original boot image from backup.
 
+##### _Warning_: avoid double installation as it will cause bootloop.
+
 ## Test
 
 The default payload in this repo is a dummy program that writes stuff to logcat. 
@@ -137,7 +149,6 @@ $ adb logcat | grep revshell
 03-18 00:34:56.312  3197  3197 D revshell: tick ! 10 seconds since process started
 03-18 00:35:01.244  2381  2381 D revshell_exec: Checking PID
 03-18 00:35:01.312  3197  3197 D revshell: tick ! 15 seconds since process started
-03-18 00:35:06.244  2381  2381 D revshell_exec: Checking PID
 ```
 
 You can disable logging (logcat and selinux) by setting `release=True` in the end of `build_revshell.py`.
@@ -146,7 +157,7 @@ You can disable logging (logcat and selinux) by setting `release=True` in the en
 
 To embed a custom payload, simply put your executable into `revshell/{arch}/` as `revshell`. It is not required to place executables for all archs: those where `revshell` is absent will use default payload. 
 
-For more details on custom payloads, see _revshell_ directory.
+For more details on custom payloads, see [Payloads](revshell/Payloads.md).
 
 
 ## Acknowledgments
@@ -157,8 +168,8 @@ Thanks to topjohnwu and all Magisk maintainers for that brilliant swiss army kni
 
 ## Links
 
-[Magisk repository](https://github.com/topjohnwu/Magisk) \
-[Original system backdoor](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo)
+[Magisk](https://github.com/topjohnwu/Magisk) \
+[unlocked-bootloader-backdoor-demo](https://github.com/LuigiVampa92/unlocked-bootloader-backdoor-demo)
 
 
 ## Disclaimer
