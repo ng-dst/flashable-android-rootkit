@@ -8,10 +8,17 @@ wfs() {
 	adb wait-for-sideload
 }
 
+TWRP_PATH=./twrp
+
 BACKUP_PATH=backup_original_partitions
 BUILD_PATH=../out
 
 ZIP_UNINSTALL=zip_reverse_shell_uninstall.zip
+
+if [ ! -f "$TWRP_PATH" ]; then
+  echo "TWRP not found at '$TWRP_PATH'. Exiting."
+  exit 1
+fi
 
 if [ ! -d "$BACKUP_PATH" ]; then
 	echo "The '$BACKUP_PATH' directory is missing."
@@ -20,7 +27,7 @@ if [ ! -d "$BACKUP_PATH" ]; then
 fi
 
 adb reboot bootloader
-fastboot boot twrp
+fastboot boot $TWRP_PATH
 
 #  Uninstall
 wfr && adb push "$BACKUP_PATH" /tmp/backup_original_partitions

