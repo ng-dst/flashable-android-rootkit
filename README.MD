@@ -12,12 +12,12 @@ Unlike its predecessor, this rootkit can bypass SafetyNet, since it doesn't need
 However, it can't bypass hardware checks, such as hardware-backed SafetyNet on newer devices. 
 
 The daemon is a custom executor (sort of a service manager) for an arbitrary payload. 
-It runs silently and normally leaves no traces in _dmesg_, _logcat_, etc., unlike a regular service run by _init_ in loop.
+It runs silently and normally leaves no traces in _dmesg_, _logcat_, etc., unlike regular services run by _init_ in loop.
 
 FURA uses SELinux to its own advantage: not only to bypass stock policy restrictions, but to hide itself from the rest of the system.
 
 This tool, like its predecessor, is based on [Magisk](https://github.com/topjohnwu/Magisk) source code, but does not necessary require root or Magisk preinstalled on the device. 
-It mostly uses a part of MagiskInit to patch SELinux policy.
+It mostly uses a part of MagiskInit to patch SELinux policies.
 
 ## Features & Improvements
 
@@ -35,7 +35,7 @@ It mostly uses a part of MagiskInit to patch SELinux policy.
 - Android SDK
 - ADB / Fastboot tools
 - Custom recovery image for your device (TWRP is recommended)
-- ##### **No Magisk installed on device!!!** &ensp; (compatibility issues cause bootloop)
+- #### **No Magisk installed on device!** &ensp; (compatibility issues cause bootloop)
 
 ## Build
 
@@ -120,7 +120,7 @@ After installation, backups will be saved automatically.
 `reinstall.sh` to reinstall quickly (if you have the backup).\
 `uninstall.sh` to restore original boot image from backup.
 
-##### _Warning_: avoid double installation as it will cause bootloop.
+#### _Warning_: avoid double installation as it will cause bootloop!
 
 ## Test
 
@@ -174,11 +174,11 @@ Thanks to topjohnwu and all Magisk maintainers for that brilliant swiss army kni
 
 ## Disclaimer
     
-    This tool is designed for educational purposes only. You may utilize this software solely on 
-    your personal devices. Any attempt to use this tool on a device without explicit authorization 
+    This tool is designed for educational purposes only. You may utilize this software solely 
+    on your personal devices. Any attempt to use it on a device without explicit authorization 
     is unethical and may violate privacy laws.
     
-    Running this tool may result in bricking or damaging your device. Create backups of your data
-    and /boot (/boot_a, /boot_b) partitions before using the tool. 
+    Using this software may result in bricking or damaging your device. Create a backup of your 
+    data and stock ROM before using it.
     
-    Use at your own risk. The developer is not responsible for any damage or loss caused by this tool.
+    Use at your own risk. Developer is not responsible for any damage or loss caused by this tool.
