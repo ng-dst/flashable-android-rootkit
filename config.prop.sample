@@ -34,8 +34,8 @@
 #  (see native/jni/payload/executor.cpp)
 #####################################################
 
-# lport=31337           #   Attacker's port
-# lhost=192.168.0.10    #   Attacker's IP
+# lport=31337           #   Attacker's (or local bind) port. Default: 31337
+# lhost=192.168.0.10    #   Attacker's IP. If not present, will listen on LPORT
 
 
 #####################################################

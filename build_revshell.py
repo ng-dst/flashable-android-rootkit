@@ -331,7 +331,7 @@ def build_binary(args):
         base_flags += ' MAGISK_DEBUG=1'
 
     if 'executor' in args.target:
-        flags = f'B_EXECUTOR=1 B_64BIT=1 LPORT={config.get("lport")} LHOST={config.get("lhost")}'
+        flags = f'B_EXECUTOR=1 B_64BIT=1 LPORT={config.get("lport") or ""} LHOST={config.get("lhost") or ""}'
         if config.get("hide_process_bind") == "1":
             flags += ' HIDE_PROCESS_BIND=1'
         run_ndk_build(flags)
