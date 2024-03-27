@@ -11,7 +11,7 @@ Since it's operating within ramdisk, this tool can bypass most root checks, inte
 Unlike its predecessor, this rootkit can bypass SafetyNet, since it doesn't need to modify system partition. \
 However, it can't bypass hardware checks, such as hardware-backed SafetyNet on newer devices. 
 
-The daemon is a custom executor (sort of a service manager) for an arbitrary payload. 
+The daemon launches arbitrary executable in loop, while providing cover and execution control. 
 It runs silently and normally leaves no traces in _dmesg_, _logcat_, etc., unlike regular services run by _init_ in loop.
 
 FURA uses SELinux to its own advantage: not only to bypass stock policy restrictions, but to hide itself from the rest of the system.
@@ -19,15 +19,29 @@ FURA uses SELinux to its own advantage: not only to bypass stock policy restrict
 This tool, like its predecessor, is based on [Magisk](https://github.com/topjohnwu/Magisk) source code, but does not necessary require root or Magisk preinstalled on the device. 
 It mostly uses a part of MagiskInit to patch SELinux policies.
 
+#### Tested on:
+
+OS | Android | Boot scheme
+---|---|---
+MIUI 11.0.2 | 7 | rootfs
+LineageOS 17.1 | 10 | 2SI
+LineageOS 19.0 | 12 | 2SI
+
 ## Features & Improvements
 
 - Installs entirely into _/boot_, does not modify _/system_ in any way
 - Operates in ramdisk without touching storage
 - Employs a custom daemon to monitor payload execution
-- Leaves no init logs
 - Modifies SELinux policy to hide itself
 - Installation and backup no longer depend on _/data_
+- Installation takes much less time
 - Cut artifacts and unused code left from Magisk
+
+## Limitations
+- Incompatible with Magisk, causing bootloop
+- Not hidden from root (files, mounts, etc.)
+- On some systems _logcat_ may log random service name on boot
+- Sockets (if any) are not hidden, though specific process using network is
 
 ## Prerequisites
 
@@ -120,7 +134,9 @@ After installation, backups will be saved automatically.
 `reinstall.sh` to reinstall quickly (if you have the backup).\
 `uninstall.sh` to restore original boot image from backup.
 
-#### _Warning_: avoid double installation as it will cause bootloop!
+#### In case installation script crashes, make sure you pull backups manually when prompted!
+
+#### _Warning_: avoid double installation as it will cause bootloop! Reinstall (uninstall and install again) instead.
 
 ## Test
 
