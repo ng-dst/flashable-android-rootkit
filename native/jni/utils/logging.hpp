@@ -21,11 +21,20 @@ struct log_callback {
 
 extern log_callback log_cb;
 
+#ifdef MAGISK_DEBUG
 #define LOGD(...) log_handler<L_DEBUG>(__VA_ARGS__)
 #define LOGI(...) log_handler<L_INFO>(__VA_ARGS__)
 #define LOGW(...) log_handler<L_WARN>(__VA_ARGS__)
 #define LOGE(...) log_handler<L_ERR>(__VA_ARGS__)
 #define PLOGE(fmt, args...) LOGE(fmt " failed with %d: %s\n", ##args, errno, std::strerror(errno))
+
+#else
+#define LOGD(...)
+#define LOGI(...)
+#define LOGW(...)
+#define LOGE(...)
+#define PLOGE(...)
+#endif
 
 int nop_log(const char *, va_list);
 void nop_ex(int);

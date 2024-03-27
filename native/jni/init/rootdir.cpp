@@ -30,6 +30,14 @@ using namespace std;
 
 static vector<string> rc_list;
 
+// two stealth issues lead to exposure of daemon:
+//   1. init complains about flash_recovery being xxxxx
+//   2. init sets prop init.svc.<name>
+
+// solution:
+//   1. redirect flash_recovery to existing yet invalid path, e.g. /dev/null
+//   2. use resetprop to delete prop directly as daemon starts
+
 static void patch_init_rc(const char *src, const char *dest, const char *tmp_dir) {
     FILE *rc = xfopen(dest, "we");
     file_readline(src, [=](string_view line) -> bool {
@@ -41,7 +49,7 @@ static void patch_init_rc(const char *src, const char *dest, const char *tmp_dir
         // Do not run flash_recovery
         if (str_starts(line, "service flash_recovery")) {
             LOGD("Remove flash_recovery\n");
-            fprintf(rc, "service flash_recovery /system/bin/xxxxx\n");
+            fprintf(rc, "service flash_recovery /dev/null\n");
             return true;
         }
         // Else just write the line
@@ -156,7 +164,7 @@ static void magic_mount(const string &sdir, const string &ddir = "") {
 #define NEW_INITRC  "/system/etc/init/hw/init.rc"
 
 
-// TODO : check if works on Android 10 ?
+// check if works on Android 10 ?  --  OK (android 10, 2si)
 // TODO : magisk compatibility ?
 // ----------- system as root ------------
 void SARBase::patch_rootdir() {
@@ -249,7 +257,6 @@ void SARBase::patch_rootdir() {
 #define TMP_RULESDIR "/.backup/.sepolicy.rules"
 
 
-// TODO : check if works on Android 10 ?
 // ---------- rootfs -----------
 void RootFSInit::patch_rootfs() {
     // Handle custom sepolicy rules

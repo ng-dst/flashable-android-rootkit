@@ -65,12 +65,8 @@ void sepolicy::magisk_rules() {
     allow("init", "tmpfs", "file", "execute");
 
     // suRights
-    allow("servicemanager", SEPOL_PROC_DOMAIN, "dir", "search");
-    allow("servicemanager", SEPOL_PROC_DOMAIN, "dir", "read");
-    allow("servicemanager", SEPOL_PROC_DOMAIN, "file", "open");
-    allow("servicemanager", SEPOL_PROC_DOMAIN, "file", "read");
-    allow("servicemanager", SEPOL_PROC_DOMAIN, "process", "getattr");
-//    allow(ALL, SEPOL_PROC_DOMAIN, "process", "sigchld");
+    allow("servicemanager", SEPOL_PROC_DOMAIN, "binder", ALL);
+    allow(ALL, SEPOL_PROC_DOMAIN, "process", "sigchld");
 
     // allowLog
     allow("logd", SEPOL_PROC_DOMAIN, "dir", "search");
