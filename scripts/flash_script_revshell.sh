@@ -45,25 +45,6 @@ ui_print " "
 is_mounted /data || mount /data || is_mounted /cache || mount /cache
 mount_partitions
 
-
-# -----------  Check if Magisk is present ----------- #
-
-# For some reason init crashes if both Magisk and this rootkit are installed...
-MAGISKALREADYINSTALLED=0
-if ls /data/magisk_backup_* 1> /dev/null 2>&1; then
-    MAGISKALREADYINSTALLED=1
-fi
-
-if [ $MAGISKALREADYINSTALLED -eq 1 ]
-then
-  ui_print "!            WARNING: Magisk detected."
-  ui_print "Full compatibility with Magisk is not yet implemented and tested. It is known to corrupt init if installed together."
-  ui_print "To continue, comment out this check in flagh_script_revshell.sh"
-  abort "! Cannot install with Magisk on device"
-fi
-# --------------------------------------------------- #
-
-
 get_flags
 find_boot_image
 

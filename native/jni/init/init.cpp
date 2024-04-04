@@ -21,8 +21,8 @@ public:
     RecoveryInit(char *argv[], cmdline *cmd) : BaseInit(argv, cmd) {}
     void start() override {
         LOGD("Ramdisk is recovery, abort\n");
-        rename("/.backup/init", "/init");
-        rm_rf("/.backup");
+        rename("/.rtk_backup/init", "/init");
+        rm_rf("/.rtk_backup");
         exec_init();
     }
 };
@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
     BaseInit *init;
     cmdline cmd{};
 
-    if (argc > 1 && argv[1] == "selinux_setup"sv) {
+    if (argc > 1 && argv[1] + 1 == "elinux_setup"sv) {
         setup_klog();
         init = new SecondStageInit(argv);
     } else {

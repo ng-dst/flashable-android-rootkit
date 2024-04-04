@@ -88,14 +88,68 @@ ui_print "- Patching ramdisk"
 echo "KEEPVERITY=$KEEPVERITY" > config
 echo "KEEPFORCEENCRYPT=$KEEPFORCEENCRYPT" >> config
 echo "RECOVERYMODE=$RECOVERYMODE" >> config
-#[ ! -z $SHA1 ] && echo "SHA1=$SHA1" >> config
 
-./magiskboot cpio ramdisk.cpio \
-"add 750 init magiskinit" \
-"patch" \
-"backup ramdisk.cpio.orig" \
-"mkdir 000 .backup" \
-"add 000 .backup/.rtk config"
+./magiskboot cpio ramdisk.cpio test
+STATUS=$?
+
+case $((STATUS & 3)) in
+  0 )  # Stock boot  /  Unsupported?
+    ui_print "- Stock boot image detected"
+
+    ./magiskboot cpio ramdisk.cpio \
+    "add 750 init magiskinit" \
+    "patch" \
+    "backup ramdisk.cpio.orig" \
+    "mkdir 000 .rtk_backup" \
+    "add 000 .rtk_backup/.rtk config"
+
+    ;;
+  1 )  # Magisk patched
+    ui_print "- Magisk patched boot image detected"
+
+    # unxz original init  (if xz)
+    ./magiskboot cpio ramdisk.cpio "extract .backup/init init"
+    ./magiskboot cpio ramdisk.cpio "extract .backup/init.xz init.xz" && \
+    ./magiskboot decompress init.xz init
+
+    # Execute our patches after magisk to overwrite sepolicy (partial stealth?)
+    #   upd:   still not working... magisk policy has priority?
+#    ./magiskboot cpio ramdisk.cpio \
+#    "mkdir 000 .rtk_backup" \
+#    "add 000 .rtk_backup/.rtk config" \
+#    "add 750 .rtk_backup/init init" \
+#    "add 750 .backup/init magiskinit" \
+#    "rm .backup/init.xz" \
+#    "add 750 .rtk_backup/magiskinit magisk_orig"
+
+    # Execute before magisk in a more straightforward way
+    ./magiskboot cpio ramdisk.cpio \
+    "mkdir 000 .rtk_backup" \
+    "add 000 .rtk_backup/.rtk config" \
+    "mv init .rtk_backup/init" \
+    "add 750 init magiskinit" \
+    "add 750 .backup/init init" \
+    "rm .backup/init.xz"
+
+    if [ $((STATUS & 8)) -ne 0 ]; then
+      ui_print ""
+      ui_print "!        WARNING: Magisk in 2SI scheme detected."
+      ui_print "Full compatibility with Magisk is not yet implemented and tested. It is known to corrupt Magisk installation if flashed together."
+      ui_print "To continue, comment out this check in scripts/boot_patch.sh"
+      ui_print ""
+      abort "! Cannot install with Magisk on 2SI device"
+    fi
+
+    ;;
+  2|3 )
+    ui_print "- Rootkit installation detected, reinstalling"
+
+     ./magiskboot cpio ramdisk.cpio \
+    "add 000 .rtk_backup/.rtk config" \
+    "add 750 init magiskinit"
+
+    ;;
+esac
 
 if [ $((STATUS & 4)) -ne 0 ]; then
   ui_print "- Compressing ramdisk"

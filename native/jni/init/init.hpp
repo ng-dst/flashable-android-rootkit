@@ -106,7 +106,7 @@ public:
     void start() override {
         prepare();
         patch_rootdir();
-        rm_rf("/.backup");
+        rm_rf("/.rtk_backup");
         exec_init();
     }
 };
@@ -131,7 +131,7 @@ public:
             first_stage_prep();
         else
             patch_rootdir();
-        rm_rf("/.backup");
+        rm_rf("/.rtk_backup");
         exec_init();
     }
 };
@@ -151,7 +151,7 @@ public:
     void start() override {
         early_mount();
         patch_rootfs();
-        rm_rf("/.backup");
+        rm_rf("/.rtk_backup");
         exec_init();
     }
 };

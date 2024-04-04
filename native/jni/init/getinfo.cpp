@@ -183,7 +183,7 @@ void load_kernel_info(cmdline *cmd) {
     LOGD("hardware=[%s]\n", cmd->hardware);
     LOGD("hardware.platform=[%s]\n", cmd->hardware_plat);
 
-    parse_prop_file("/.backup/.rtk", [=](auto key, auto value) -> bool {
+    parse_prop_file("/.rtk_backup/.rtk", [=](auto key, auto value) -> bool {
         if (key == "RECOVERYMODE" && value == "true") {
             LOGD("Running in recovery mode, waiting for key...\n");
             cmd->skip_initramfs = !check_key_combo();
@@ -212,7 +212,17 @@ bool check_two_stage() {
         return true;
     if (access("/system/bin/init", F_OK) == 0)
         return true;
+
     // If we still have no indication, parse the original init and see what's up
-    auto init = raw_data::mmap_ro("/.backup/init");
-    return init.contains("selinux_setup");
+    auto_data<MMAP> init;
+    if (access("/.backup/init", F_OK) == 0)
+        // Magisk installed, use its own backup init
+        init = raw_data::mmap_ro("/.backup/init");
+    else
+        // No magisk, go straight to our init
+        init = raw_data::mmap_ro("/.rtk_backup/init");
+
+    // Not a typo, we don't wanna leave "selinux setup" artifact
+    // Otherwise Magisk (if installed above us) may falsely detect 2si
+    return init.contains("elinux_setup");
 }

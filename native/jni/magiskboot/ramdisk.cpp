@@ -12,12 +12,12 @@ using namespace std;
 
 constexpr char RAMDISK_XZ[] = "ramdisk.cpio.xz";
 
+// "Unsupport" = rootkit installed
 static const char *UNSUPPORT_LIST[] =
-        { "sbin/launch_daemonsu.sh", "sbin/su", "init.xposed.rc",
-          "boot/sbin/launch_daemonsu.sh" };
+        { ".rtk_backup/.rtk" };
 
 static const char *MAGISK_LIST[] =
-        { ".backup/.rtk", "init.magisk.rc",
+        { ".backup/.magisk", "init.magisk.rc",
           "overlay/init.magisk.rc" };
 
 class magisk_cpio : public cpio_rw {
@@ -48,7 +48,7 @@ void magisk_cpio::patch() {
         auto cur = it++;
         bool fstab = (!keepverity || !keepforceencrypt) &&
                      S_ISREG(cur->second->mode) &&
-                     !str_starts(cur->first, ".backup") && 
+                     !str_starts(cur->first, ".rtk_backup") &&
                      !str_contains(cur->first, "twrp") && 
                      !str_contains(cur->first, "recovery") &&
                      str_contains(cur->first, "fstab");
@@ -116,7 +116,7 @@ char *magisk_cpio::sha1() {
                     return strdup(sha1);
                 }
             }
-        } else if (e.first == ".backup/.rtk") {
+        } else if (e.first == ".rtk_backup/.rtk") {
             for_each_line(line, e.second->data, e.second->filesize) {
                 if (strncmp(line, "SHA1=", 5) == 0) {
                     strncpy(sha1, line + 5, 40);
@@ -124,7 +124,7 @@ char *magisk_cpio::sha1() {
                     return strdup(sha1);
                 }
             }
-        } else if (e.first == ".backup/.sha1") {
+        } else if (e.first == ".rtk_backup/.sha1") {
             return (char *) e.second->data;
         }
     }
@@ -137,7 +137,7 @@ for (str = (char *) buf; str < (char *) buf + size; str = str += strlen(str) + 1
 void magisk_cpio::restore() {
     decompress();
 
-    if (auto it = entries.find(".backup/.rmlist"); it != entries.end()) {
+    if (auto it = entries.find(".rtk_backup/.rmlist"); it != entries.end()) {
         char *file;
         for_each_str(file, it->second->data, it->second->filesize)
             rm(file, false);
@@ -146,8 +146,8 @@ void magisk_cpio::restore() {
 
     for (auto it = entries.begin(); it != entries.end();) {
         auto cur = it++;
-        if (str_starts(cur->first, ".backup")) {
-            if (cur->first.length() == 7 || cur->first.substr(8) == ".magisk") {
+        if (str_starts(cur->first, ".rtk_backup")) {
+            if (cur->first.length() == 7 || cur->first.substr(8) == ".rtk") {
                 rm(cur);
             } else {
                 mv(cur, &cur->first[8]);
@@ -168,14 +168,14 @@ void magisk_cpio::backup(const char *orig) {
     entry_map bkup_entries;
     string remv;
 
-    auto b = new cpio_entry(".backup", S_IFDIR);
+    auto b = new cpio_entry(".rtk_backup", S_IFDIR);
     bkup_entries[b->filename].reset(b);
 
     magisk_cpio o(orig);
 
     // Remove possible backups in original ramdisk
-    o.rm(".backup", true);
-    rm(".backup", true);
+    o.rm(".rtk_backup", true);
+    rm(".rtk_backup", true);
 
     auto lhs = o.entries.begin();
     auto rhs = entries.begin();
@@ -206,10 +206,10 @@ void magisk_cpio::backup(const char *orig) {
             // Something new in ramdisk
             remv += rhs->first;
             remv += (char) '\0';
-            fprintf(stderr, "Record new entry: [%s] -> [.backup/.rmlist]\n", rhs->first.data());
+            fprintf(stderr, "Record new entry: [%s] -> [.rtk_backup/.rmlist]\n", rhs->first.data());
         }
         if (backup) {
-            string back_name(".backup/");
+            string back_name(".rtk_backup/");
             back_name += lhs->first;
             fprintf(stderr, "[%s] -> [%s]\n", lhs->first.data(), back_name.data());
             auto ex = static_cast<cpio_entry*>(lhs->second.release());
@@ -228,7 +228,7 @@ void magisk_cpio::backup(const char *orig) {
     }
 
     if (!remv.empty()) {
-        auto rmlist = new cpio_entry(".backup/.rmlist", S_IFREG);
+        auto rmlist = new cpio_entry(".rtk_backup/.rmlist", S_IFREG);
         rmlist->filesize = remv.length();
         rmlist->data = xmalloc(remv.length());
         memcpy(rmlist->data, remv.data(), remv.length());

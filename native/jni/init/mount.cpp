@@ -245,7 +245,7 @@ void MagiskInit::mount_rules_dir(const char *dev_base, const char *mnt_base) {
     strcpy(p, "/data/unencrypted");
     if (access(path, F_OK) == 0) {
         // FBE, need to use an unencrypted path
-        custom_rules_dir = path + "/magisk"s;
+        custom_rules_dir = path + "/rtk"s;
     } else {
         // Skip if /data/adb does not exist
         strcpy(p, "/data/adb");
@@ -269,7 +269,7 @@ cache:
     }
     if (!do_mount("ext4"))
         goto metadata;
-    custom_rules_dir = path + "/magisk"s;
+    custom_rules_dir = path + "/rtk"s;
     goto success;
 
 metadata:
@@ -279,7 +279,7 @@ metadata:
     strcpy(p, "/metadata");
     if (setup_block(false) < 0 || !do_mount("ext4"))
         goto persist;
-    custom_rules_dir = path + "/magisk"s;
+    custom_rules_dir = path + "/rtk"s;
     goto success;
 
 persist:
@@ -289,7 +289,7 @@ persist:
     strcpy(p, "/persist");
     if (setup_block(false) < 0 || !do_mount("ext4"))
         return;
-    custom_rules_dir = path + "/magisk"s;
+    custom_rules_dir = path + "/rtk"s;
 
 success:
     // Create symlinks so we don't need to go through this logic again
@@ -301,18 +301,15 @@ void RootFSInit::early_mount() {
     self = raw_data::read("/init");
 
     LOGD("Restoring /init\n");
-    rename("/.backup/init", "/init");
+    rename("/.rtk_backup/init", "/init");
 
     mount_with_dt();
 }
 
 void SARBase::backup_files() {
-    if (access("/overlay.d", F_OK) == 0)
-        backup_folder("/overlay.d", overlays);
-
     self = raw_data::read("/proc/self/exe");
-    if (access("/.backup/.rtk", R_OK) == 0)
-        config = raw_data::read("/.backup/.rtk");
+    if (access("/.rtk_backup/.rtk", R_OK) == 0)
+        config = raw_data::read("/.rtk_backup/.rtk");
 }
 
 void SARBase::mount_system_root() {
@@ -356,7 +353,7 @@ void SARInit::early_mount() {
 
     {
         auto init = raw_data::mmap_ro("/init");
-        is_two_stage = init.contains("selinux_setup");
+        is_two_stage = init.contains("elinux_setup");
     }
     LOGD("is_two_stage: [%d]\n", is_two_stage);
 

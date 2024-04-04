@@ -26,8 +26,7 @@ void FirstStageInit::prepare() {
         xmkdirs(FSR "/system/bin", 0755);
         rename("/init" /* magiskinit */, FSR "/system/bin/init");
         symlink("/system/bin/init", FSR "/init");
-        rename("/.backup", FSR "/.backup");
-        rename("/overlay.d", FSR "/overlay.d");
+        rename("/.rtk_backup", FSR "/.rtk_backup");
         xsymlink("/system/bin/init", "/init");
 
         chdir(FSR);
@@ -35,7 +34,7 @@ void FirstStageInit::prepare() {
         xmkdir("/system", 0755);
         xmkdir("/system/bin", 0755);
         rename("/init" /* magiskinit */ , "/system/bin/init");
-        rename("/.backup/init", "/init");
+        rename("/.rtk_backup/init", "/init");
     }
 
     // Try to load fstab from dt
