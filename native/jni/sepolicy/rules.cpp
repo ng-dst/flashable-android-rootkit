@@ -50,6 +50,7 @@ void sepolicy::magisk_rules() {
 
     // Allow magiskinit daemon to handle mock selinuxfs
     allow("kernel", "tmpfs", "fifo_file", "write");
+    allow("kernel", "tmpfs", "filesystem", "associate");
 
     // For relabelling files
     allow("rootfs", "labeledfs", "filesystem", "associate");

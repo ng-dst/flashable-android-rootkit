@@ -147,17 +147,11 @@ void magisk_cpio::restore() {
     for (auto it = entries.begin(); it != entries.end();) {
         auto cur = it++;
         if (str_starts(cur->first, ".rtk_backup")) {
-            if (cur->first.length() == 7 || cur->first.substr(8) == ".rtk") {
+            if (cur->first.length() == 11 || cur->first.substr(12) == ".rtk") {
                 rm(cur);
             } else {
-                mv(cur, &cur->first[8]);
+                mv(cur, &cur->first[12]);
             }
-        } else if (str_starts(cur->first, "magisk") ||
-                cur->first == "overlay/init.magisk.rc" ||
-                cur->first == "sbin/magic_mask.sh" ||
-                cur->first == "init.magisk.rc") {
-            // Some known stuff we can remove
-            rm(cur);
         }
     }
 }

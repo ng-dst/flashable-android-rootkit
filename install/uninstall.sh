@@ -28,8 +28,8 @@ fi
 
 echo "[*] Rebooting into bootloader"
 adb reboot bootloader || echo "[!] Please enter Fastboot manually. Usually by holding 'Volume-' and 'Power' until reboot"
-echo "[*] Booting '$TWRP_PATH'"
 fastboot boot $TWRP_PATH
+echo "[*] Booting '$TWRP_PATH'"
 
 #  Uninstall
 echo "[*] Pushing backups from '$BACKUP_PATH'"

@@ -232,7 +232,7 @@ def sign_zip(unsigned):
 
 
 def binary_dump(src, out, var_name):
-    out.write(f'constexpr unsigned char {var_name}[] = {{')
+    out.write(f'inline constexpr unsigned char {var_name}[] = {{')
     for i, c in enumerate(xz(src.read())):
         if i % 16 == 0:
             out.write('\n')

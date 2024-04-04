@@ -77,7 +77,7 @@ print_title() {
   ui_print "$pounds"
   ui_print " $1 "
   [ "$2" ] && ui_print " $2 "
-  ui_print "$pounds"MAGISKBIN
+  ui_print "$pounds"
 }
 
 ######################
