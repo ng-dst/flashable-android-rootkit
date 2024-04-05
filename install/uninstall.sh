@@ -20,10 +20,18 @@ if [ ! -f "$TWRP_PATH" ]; then
   exit 1
 fi
 
+BACKUPS_PRESENT=1
 if [ ! -d "$BACKUP_PATH" ]; then
-	echo "[-] The '$BACKUP_PATH' directory is missing."
-  echo "[-] Cannot uninstall without backups."
-  exit 1
+  BACKUPS_PRESENT=0
+	echo "[?] The '$BACKUP_PATH' directory is missing."
+  echo "[?] If you uninstall without backups, your /boot image may not match the stock one."
+  read -p "[?] Continue? (Y)es / (n)o " answer
+    if [ "$answer" == "n" ] || [ "$answer" == "N" ] || [ "$answer" == "no" ]; then
+        echo "[-] Cancelled by user"
+        exit 1
+    fi
+else
+  echo "[+] Uninstalling using backups"
 fi
 
 echo "[*] Rebooting into bootloader"
@@ -32,14 +40,16 @@ fastboot boot $TWRP_PATH
 echo "[*] Booting '$TWRP_PATH'"
 
 #  Uninstall
-echo "[*] Pushing backups from '$BACKUP_PATH'"
-wfr && adb push "$BACKUP_PATH" /tmp/backup_original_partitions
-wfr && sleep 10 && adb shell twrp sideload || echo "[!] Please enter ADB sideload manually. Go to Advanced -> ADB sideload"
+if [ $BACKUPS_PRESENT -ne 0 ]; then
+  echo "[*] Pushing backups from '$BACKUP_PATH'"
+  wfr && adb push "$BACKUP_PATH" /tmp/backup_original_partitions
+fi
+wfr && sleep 10 && adb shell twrp sideload || echo "[!] Please start ADB sideload manually. Go to Advanced -> ADB sideload"
 wfs && echo "[*] Running uninstaller"
 adb sideload "$BUILD_PATH/$ZIP_UNINSTALL"
 if [ $? -ne 0 ]; then
 	echo "[-] Uninstall failed. Something is wrong?"
-	echo "[-] Ignore if there are no problems"
+	echo "[-] Ignore if TWRP shows no problems"
 	exit 1
 fi
 

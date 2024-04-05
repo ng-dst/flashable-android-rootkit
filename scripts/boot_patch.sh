@@ -114,6 +114,7 @@ case $((STATUS & 3)) in
 
     # Execute our patches after magisk to overwrite sepolicy (partial stealth?)
     #   upd:   still not working... magisk policy has priority?
+    #  hi fstab fastboot btw
 #    ./magiskboot cpio ramdisk.cpio \
 #    "mkdir 000 .rtk_backup" \
 #    "add 000 .rtk_backup/.rtk config" \
@@ -131,13 +132,14 @@ case $((STATUS & 3)) in
     "add 750 .backup/init init" \
     "rm .backup/init.xz"
 
+    #  contains "selinux_setup" ?   ->  2si, too
+    ./magiskboot hexpatch init 73656c696e75785f7365747570 73656c696e75785f7365747570 && STATUS=8
+
     if [ $((STATUS & 8)) -ne 0 ]; then
-      ui_print ""
-      ui_print "!        WARNING: Magisk in 2SI scheme detected."
-      ui_print "Full compatibility with Magisk is not yet implemented and tested. It is known to corrupt Magisk installation if flashed together."
-      ui_print "To continue, comment out this check in scripts/boot_patch.sh"
-      ui_print ""
-      abort "! Cannot install with Magisk on 2SI device"
+      ui_print " "
+      ui_print "!    WARNING: Magisk in 2SI scheme detected."
+      ui_print "Full compatibility with Magisk is not yet implemented and tested. This tool will probably not work with Magisk installed."
+      ui_print " "
     fi
 
     ;;

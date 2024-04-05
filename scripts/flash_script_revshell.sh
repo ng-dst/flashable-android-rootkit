@@ -22,7 +22,7 @@ umask 022
 OUTFD=$2
 ZIP=$3
 
-if [ ! -f $COMMONDIR/util_functions.sh ]; then
+if [ ! -f "$COMMONDIR"/util_functions.sh ]; then
   echo "! Unable to extract zip file!"
   exit 1
 fi
@@ -31,8 +31,8 @@ fi
 . $COMMONDIR/util_functions.sh
 
 ORIGINALBACKUPSDIR=/tmp/backup_original_partitions
-#rm -rf $ORIGINALBACKUPSDIR 2>/dev/null
-mkdir $ORIGINALBACKUPSDIR 2>/dev/null
+HAVE_BACKUP=$([ -d $ORIGINALBACKUPSDIR ])
+
 
 setup_flashable
 
@@ -86,22 +86,24 @@ ui_print "- OK rootkit installed"
 
 # Cleanups
 $BOOTMODE || recovery_cleanup
-rm -rf $TMPDIR
+rm -rf "$TMPDIR"
 rm -rf /tmp/magisk 2>/dev/null
 
 ui_print "- Done"
 
 # SILENTPOLICY - backups warning
-ui_print " "
-ui_print " "
-ui_print " ! WARNING !"
-ui_print " Installation completed successfully. Do not reboot to system right now. Please do not forget to dump backups via adb and save them:"
-ui_print " "
-ui_print " $ adb pull $ORIGINALBACKUPSDIR . "
-ui_print " "
-ui_print " If you forget to do this, you will not be able to automatically uninstall this tool, you will have to manually restore your stock /boot partition"
-ui_print " "
-ui_print " "
+if [ "$HAVE_BACKUP" -eq 0 ]; then
+  ui_print " "
+  ui_print " "
+  ui_print " ! WARNING !"
+  ui_print " Installation completed successfully. Do not reboot to system right now. Please do not forget to dump backups via adb and save them:"
+  ui_print " "
+  ui_print " $ adb pull $ORIGINALBACKUPSDIR . "
+  ui_print " "
+  ui_print " It is strongly recommended to save this backup. Otherwise you may not be able to restore stock /boot signed image."
+  ui_print " "
+  ui_print " "
+fi
 
 ui_print " "
 

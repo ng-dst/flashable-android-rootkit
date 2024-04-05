@@ -24,7 +24,11 @@ fi
 
 if [ -d "$BACKUP_PATH" ]; then
 	echo "[?] The 'backup_original_partitions' directory is already present."
-    read -p "[?] Overwrite? (y/N) " answer
+    read -p "[?] Overwrite?  (y)es / (N)o / (q)uit " answer
+    if [ "$answer" == "q" ] || [ "$answer" == "Q" ] || [ "$answer" == "quit" ]; then
+        echo "[-] Cancelled by user"
+        exit 1
+    fi
     if [ "$answer" != "y" ] && [ "$answer" != "Y" ] && [ "$answer" != "yes" ]; then
         echo "[+] Will not pull backups"
         pull_backups=0
@@ -51,7 +55,7 @@ if [[ $pull_backups == 1 ]]; then
   rm -rf "$BACKUP_PATH" 2>/dev/null
 	wfr && adb pull "/tmp/backup_original_partitions" "$BACKUP_PATH"
 	if [ $? -ne 0 ]; then
-	  echo "[!] Warning: please pull backups manually. See prompt in ADB Sideload console."
+	  echo "[!] Warning: please pull backups manually. See prompt in TWRP console."
 	  exit 1
 	else
 	  echo "[+] Backups pulled to '$BACKUP_PATH'"

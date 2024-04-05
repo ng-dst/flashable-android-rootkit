@@ -1,10 +1,16 @@
 #MAGISK
 ############################################
 #
-# Revshell uninstaller (restore to stock /boot)
+# Revshell uninstaller
 #
-# requires boot image (.gz) at
+# Two options available:
+#  1. full /boot restore using backup
+#     requires boot image (.gz) at
 #     /tmp/backup_original_partitions/magisk_backup/boot.img.gz
+#
+#  2. restore init in-place using backed up init in /boot
+#     warning: may not restore stock /boot signature!
+#     use 1st option if you want to revert to stock /boot
 #
 ############################################
 
@@ -48,21 +54,15 @@ ORIGINALBACKUPSDIR=/tmp/backup_original_partitions
 if [ ! -d $ORIGINALBACKUPSDIR ]
 then
   ui_print " "
-  ui_print " "
-  ui_print " ! WARNING !"
-  ui_print " Original backups not provided. Uninstall is not possible."
-  ui_print " Please push previously saved backups to device via adb first:"
+  ui_print " ! Note: "
+  ui_print " Original backups not provided. Uninstall script may not restore stock /boot signature."
+  ui_print " Push your backups before running uninstaller if you want to revert to stock boot:"
   ui_print " "
   ui_print " $ adb push backup_original_partitions /tmp"
   ui_print " "
-  ui_print " Once it is done you will be able to uninstall the tool"
-  ui_print " (directory $ORIGINALBACKUPSDIR must exist) "
-  ui_print " "
-  abort "!!!"
-  exit 1
+else
+  ui_print "- Backups uploaded and ready"
 fi
-ui_print "- Backups uploaded and ready"
-
 # ================================================================================================ #
 
 api_level_arch_detect
@@ -110,6 +110,9 @@ case $? in
     ;;
 esac
 
+./magiskboot cpio ramdisk.cpio test
+STATUS=$?
+
 # Restore the original boot partition path
 [ "$BOOTNAND" ] && BOOTIMAGE=$BOOTNAND
 
@@ -126,13 +129,29 @@ if [ -d $BACKUPDIR ]; then
     flash_image $BACKUPDIR/${name}.img.gz $IMAGE
   done
 else
-  abort "! Boot image backup unavailable"
+  [ $((STATUS & 2)) -ne 0 ] || abort "! Rootkit isn't installed. If it is, use backups to uninstall."
+  ui_print "- Restoring init in-place"
+
+  # Internal restore
+  ./magiskboot cpio ramdisk.cpio restore
+  if ! ./magiskboot cpio ramdisk.cpio "exists init"; then
+    # A only system-as-root
+    rm -f ramdisk.cpio
+  fi
+  ./magiskboot repack $BOOTIMAGE
+
+  # Sign chromeos boot
+  $CHROMEOS && sign_chromeos
+  ui_print "- Flashing restored boot image"
+  flash_image new-boot.img $BOOTIMAGE || abort "! Insufficient partition size"
+
+  ui_print "- OK rootkit uninstalled"
 fi
 
 cd /
 
 # Remove rootkit's persistence directory
-rm -rf /data/adb/.cache
+rm -rf /data/adb/.fura
 
 recovery_cleanup
 ui_print "- Done"

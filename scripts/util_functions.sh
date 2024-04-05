@@ -478,9 +478,8 @@ install_magisk() {
   ./magiskboot cleanup
   rm -f new-boot.img
 
-
   # do not create backups on reinstall (speed up installing)
-  if [ ! -d /tmp/backup_original_partitions/magisk_backup ]; then
+  if [ ! -d /tmp/backup_original_partitions ]; then
     ui_print "- Packing backups..."
     run_migrations
   fi
@@ -534,12 +533,12 @@ run_migrations() {
 #  done
 
    #Stock backups
-#  LOCSHA1=$SHA1
+  mkdir /tmp/backup_original_partitions 2>/dev/null
+
   for name in boot dtb dtbo dtbs; do
     BACKUP=/tmp/magisk/stock_${name}.img
     [ -f $BACKUP ] || continue
     if [ $name = 'boot' ]; then
-#      LOCSHA1=`$MAGISKBIN/magiskboot sha1 $BACKUP`
       mkdir /tmp/backup_original_partitions/magisk_backup 2>/dev/null
     fi
     TARGET=/tmp/backup_original_partitions/magisk_backup/${name}.img
