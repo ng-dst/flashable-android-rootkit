@@ -458,7 +458,7 @@ install_magisk() {
   # Source the boot patcher
   ui_print "- Sourcing boot_patch.sh"
   SOURCEDMODE=true
-  . ./boot_patch.sh "$BOOTIMAGE"
+  . ./boot_patch.sh "$BOOTIMAGE" "$SYSTEM_ROOT"
 
   ui_print "- Flashing new boot image"
 

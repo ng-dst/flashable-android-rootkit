@@ -27,6 +27,8 @@ MIUI 11.0.2 | 7 | rootfs
 LineageOS 17.1 | 10 | 2SI
 LineageOS 19.0 | 12 | 2SI
 
+_Note_: if Magisk is installed on SAR or 2SI device, this tool will fallback to Magisk's `overlay.d`. It will use standard `magisk` context which is not hidden by SELinux policy. In this case, setting `hide_process_bind` is recommended (see `config.prop`).
+
 ## Features & Improvements
 
 - Installs entirely into _/boot_, does not modify _/system_ in any way
@@ -36,12 +38,13 @@ LineageOS 19.0 | 12 | 2SI
 - Installation and backup no longer depend on _/data_
 - Installation takes much less time
 - Cut artifacts and unused code left from Magisk
+- Compatible with Magisk on device
 
 ## Limitations
-- Incompatible with Magisk, causing bootloop
 - Not hidden from root (files, mounts, etc.)
 - On some systems _logcat_ may log random service name on boot
 - Sockets (if any) are not hidden, though specific process using network is
+- Not hidden by SELinux policy if installed with Magisk on SAR / 2SI device
 
 ## Prerequisites
 
@@ -49,7 +52,6 @@ LineageOS 19.0 | 12 | 2SI
 - Android SDK
 - ADB / Fastboot tools
 - Custom recovery image for your device (TWRP is recommended)
-- #### **No Magisk installed on device!** &ensp; (compatibility issues cause bootloop)
 
 ## Build
 
@@ -75,7 +77,7 @@ The result is a sideloadable _.zip_ package which can be installed with TWRP or 
 
 _Note_: if using reverse shell payloads (such as ReverseSSH, Meterpreter, etc.), set your LHOST and LPORT in `config.prop` before building.
 
-_Note_: if SELinux is _permissive_ or _off_ on the target device, you can use alternative hiding method. See `config.prop` for details.
+_Note_: if SELinux is _permissive_ or _off_ on the target device or you have Magisk, you can use alternative hiding method. See `config.prop` for details.
 
 _Note_: you can disable logging (logcat and selinux) by setting `release=True` in the end of `build_revshell.py`.
 
@@ -99,18 +101,22 @@ At this moment, **do not reboot** right away. Backup original boot partition:
 $ adb pull /tmp/backup_original_partitions .
 ```
 
-Run the command **before** rebooting into system, otherwise you will not be able to uninstall this tool properly and will have to find stock boot image for your device somewhere and flash it.
+Run the command **before** rebooting into system, otherwise you might not be able to fully restore stock boot image.
 
 Reboot into system after you have backups on your PC.
 
 #### Uninstall
 
-You need a backup of original partitions made during installation. Move it to _/tmp_:
+You have two options to uninstall this tool: **restore /boot image** using backup or **revert modifications in-place**.
+
+To restore the image, push a backup of the original partitions made during installation to _/tmp_:
 ```
 $ adb push backup_original_partitions /tmp/
 ```
 
-Start sideload feature in Advanced / Sideload and then run:
+If you don't have a backup image or don't need to keep /boot signed, you can proceed without backups. In this case, uninstall script will attempt to restore _init_ in-place.
+
+Start sideload feature in Advanced / ADB Sideload and then run:
 ```
 $ adb sideload zip_reverse_shell_uninstall.zip
 ```
@@ -130,13 +136,10 @@ Before running one, rename or symlink your TWRP image as `twrp` in your current 
 Simply connect your device via USB and switch it into Fastboot mode.
 After installation, backups will be saved automatically.
 
-`install.sh` to install and save backup image. \
-`reinstall.sh` to reinstall quickly (if you have the backup).\
-`uninstall.sh` to restore original boot image from backup.
+`install.sh` to install or reinstall. \
+`uninstall.sh` to uninstall: either restore boot image from backup or uninstall directly.
 
-#### In case installation script crashes, make sure you pull backups manually when prompted!
-
-#### _Warning_: avoid double installation as it will cause bootloop! Reinstall (uninstall and install again) instead.
+#### In case installation script crashes, make sure you pull backups manually when prompted! (see TWRP console)
 
 ## Test
 
@@ -166,6 +169,12 @@ $ adb logcat | grep revshell
 03-18 00:35:01.244  2381  2381 D revshell_exec: Checking PID
 03-18 00:35:01.312  3197  3197 D revshell: tick ! 15 seconds since process started
 ```
+
+On boot, temp and persistence directories are created:
+- `/mnt/secure/temp` - protected directory in _tmpfs_
+- `/data/adb/.fura` - directory to store arbitrary files persistently
+
+Both directories are protected by SELinux policy, so they might be inaccessible even to root (depends on the stock policy).
 
 You can disable logging (logcat and selinux) by setting `release=True` in the end of `build_revshell.py`.
 

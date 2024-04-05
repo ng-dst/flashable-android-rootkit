@@ -1,0 +1,13 @@
+# Used in overlay.d fallback for 2si with magisk
+
+service %s ${MAGISKTMP}/executor %s
+    disabled
+    user root
+    group root
+    seclabel u:r:magisk:s0
+    shutdown critical
+    oneshot
+
+on property:sys.boot_completed=1
+    start %s
+

@@ -76,11 +76,13 @@ void magisk_cpio::patch() {
 #define TWO_STAGE_INIT    (1 << 3)
 
 int magisk_cpio::test() {
-    for (auto file : UNSUPPORT_LIST)
-        if (exists(file))
-            return UNSUPPORTED_CPIO;
-
     int flags = STOCK_BOOT;
+
+    for (auto file : UNSUPPORT_LIST)
+        if (exists(file)) {
+            flags |= UNSUPPORTED_CPIO;
+            break;
+        }
 
     if (exists(RAMDISK_XZ)) {
         flags |= COMPRESSED_CPIO | MAGISK_PATCHED;

