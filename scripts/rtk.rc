@@ -8,6 +8,6 @@ service %s ${MAGISKTMP}/executor %s
     shutdown critical
     oneshot
 
-on property:sys.boot_completed=1
+on post-fs-data
     start %s
 

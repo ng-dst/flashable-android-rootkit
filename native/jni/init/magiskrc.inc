@@ -19,7 +19,7 @@ constexpr char PAYLOAD_RC[] =
 "    oneshot\n"
 "\n"
 
-"on property:sys.boot_completed=1\n"
+"on post-fs-data\n"
 "    start %2$s\n"
 "\n"
 ;
