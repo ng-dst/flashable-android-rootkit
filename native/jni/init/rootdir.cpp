@@ -171,19 +171,9 @@ void SARBase::patch_rootdir() {
     string tmp_dir;
     const char *sepol;
 
-    if (access("/sbin", F_OK) == 0) {
-        tmp_dir = "/sbin";
-        sepol = "/sbin/.sp";  // crash on .se rename?     upd: OK if we don't change length
-    } else
-    // temporarily change to /dev/ for compatibility test with magisk ?
-    {
-        // char buf[8];
-        // gen_rand_str(buf, sizeof(buf));
-        // tmp_dir = "/dev/"s + buf;
-        tmp_dir = "/dev/sys_ctl";
-        xmkdir(tmp_dir.data(), 0);
-        sepol = "/dev/.sp";
-    }
+    tmp_dir = "/dev/sys_ctl";
+    xmkdir(tmp_dir.data(), 0);
+    sepol = "/dev/.sp";
 
     setup_tmp(tmp_dir.data());
     chdir(tmp_dir.data());
@@ -194,10 +184,6 @@ void SARBase::patch_rootdir() {
     xmkdir(ROOTMIR, 0700);
     xmount("/", ROOTMIR, nullptr, MS_BIND, nullptr);
     mount_list.emplace_back(tmp_dir + "/" ROOTMIR);
-
-    // Recreate original sbin structure if necessary
-    if (tmp_dir == "/sbin")
-        recreate_sbin(ROOTMIR "/sbin", true);
 
     // Patch init
     int patch_count;

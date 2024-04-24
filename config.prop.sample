@@ -42,7 +42,11 @@
 # Execution and stealth parameters
 #####################################################
 
+# Create persistent dir at /data/adb/.fura ?
+# create_persist_dir=1
+
 # Use bind mounts to hide processes (alternative method if SELinux is permissive or off)
+# (Note: mounts are exposed to `mount` command)
 # hide_process_bind=1
 
 # Domain to run within (arbitrary name)

