@@ -38,7 +38,6 @@ fi
 echo "[*] Rebooting into bootloader"
 adb reboot bootloader || echo "[!] Please enter Fastboot manually. Usually by holding 'Volume-' and 'Power' until reboot"
 fastboot boot $TWRP_PATH
-echo "[*] Booting '$TWRP_PATH'"
 
 #  Tell installer not to pack backups
 if [[ $pull_backups == 0 ]]; then
@@ -46,6 +45,7 @@ if [[ $pull_backups == 0 ]]; then
 fi
 
 #  Install
+echo "[*] Loading TWRP. Please wait..."
 wfr && sleep 10 && adb shell twrp sideload || echo "[!] Please enter ADB sideload manually. Go to Advanced -> ADB sideload"
 wfs && echo "[*] Running installer"
 adb sideload "$BUILD_PATH/$ZIP_INSTALL" && echo "[+] Install complete"

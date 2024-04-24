@@ -37,13 +37,14 @@ fi
 echo "[*] Rebooting into bootloader"
 adb reboot bootloader || echo "[!] Please enter Fastboot manually. Usually by holding 'Volume-' and 'Power' until reboot"
 fastboot boot $TWRP_PATH
-echo "[*] Booting '$TWRP_PATH'"
 
 #  Uninstall
 if [ $BACKUPS_PRESENT -ne 0 ]; then
   echo "[*] Pushing backups from '$BACKUP_PATH'"
   wfr && adb push "$BACKUP_PATH" /tmp/backup_original_partitions
 fi
+
+echo "[*] Loading TWRP. Please wait..."
 wfr && sleep 10 && adb shell twrp sideload || echo "[!] Please start ADB sideload manually. Go to Advanced -> ADB sideload"
 wfs && echo "[*] Running uninstaller"
 adb sideload "$BUILD_PATH/$ZIP_UNINSTALL"
