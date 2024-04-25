@@ -31,7 +31,9 @@ fi
 . $COMMONDIR/util_functions.sh
 
 ORIGINALBACKUPSDIR=/tmp/backup_original_partitions
-HAVE_BACKUP=$([ -d $ORIGINALBACKUPSDIR ])
+
+HAVE_BACKUP=0
+[ -d "$ORIGINALBACKUPSDIR" ] && HAVE_BACKUP=1
 
 
 setup_flashable
